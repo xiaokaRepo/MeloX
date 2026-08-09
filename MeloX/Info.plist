@@ -24,6 +24,13 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>MeloX 需要使用麦克风聆听环境音乐并在设备端生成音频指纹；持续识别会在您手动停止前保持麦克风使用。</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>MeloX 需要访问局域网中的 MeloX Gateway，以加载自定义音源和歌词。</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>

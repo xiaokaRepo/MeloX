@@ -21,7 +21,7 @@ enum TextPVTextResources {
     static let serifFamilies: Set<String> = ["Noto Serif JP"]
     static let strokeDirections: [CGPoint] = (0..<12).map { index in
         let angle = CGFloat(index) / 12 * 2 * .pi
-        return CGPoint(x: cos(angle), y: sin(angle))
+        return CGPoint(x: CoreGraphics.cos(angle), y: CoreGraphics.sin(angle))
     }
 }
 
@@ -180,14 +180,17 @@ extension TextPVEffectPainter {
         height: CGFloat,
         rotation: CGFloat
     ) -> Path {
-        let cosine = cos(rotation)
-        let sine = sin(rotation)
-        let corners = [
-            CGPoint(x: -width / 2, y: -height / 2),
-            CGPoint(x: width / 2, y: -height / 2),
-            CGPoint(x: width / 2, y: height / 2),
-            CGPoint(x: -width / 2, y: height / 2),
-        ].map { point in
+        let cosine = CoreGraphics.cos(rotation)
+        let sine = CoreGraphics.sin(rotation)
+        let halfWidth = width / 2
+        let halfHeight = height / 2
+        let localCorners: [CGPoint] = [
+            CGPoint(x: -halfWidth, y: -halfHeight),
+            CGPoint(x: halfWidth, y: -halfHeight),
+            CGPoint(x: halfWidth, y: halfHeight),
+            CGPoint(x: -halfWidth, y: halfHeight),
+        ]
+        let corners = localCorners.map { point in
             CGPoint(
                 x: center.x + point.x * cosine - point.y * sine,
                 y: center.y + point.x * sine + point.y * cosine
@@ -207,8 +210,8 @@ extension TextPVEffectPainter {
             let angle = CGFloat(index) * .pi / CGFloat(points) - .pi / 2
             let currentRadius = index.isMultiple(of: 2) ? radius : radius * 0.28
             let point = CGPoint(
-                x: center.x + cos(angle) * currentRadius,
-                y: center.y + sin(angle) * currentRadius
+                x: center.x + CoreGraphics.cos(angle) * currentRadius,
+                y: center.y + CoreGraphics.sin(angle) * currentRadius
             )
             index == 0 ? path.move(to: point) : path.addLine(to: point)
         }

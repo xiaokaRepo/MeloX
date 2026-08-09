@@ -213,6 +213,8 @@ struct Song: Codable, Hashable, Identifiable {
     let musicVideoID: Int?
     let podcastMetadata: PodcastPlaybackMetadata?
     let audioAvailability: SongAudioAvailability
+    let gatewayReference: GatewayTrackReference?
+    let gatewayReferences: [GatewayTrackReference]
 
     var artistText: String {
         artists.map(\.name).joined(separator: " / ")
@@ -234,6 +236,8 @@ struct Song: Codable, Hashable, Identifiable {
         case publishTime, copyright
         case musicVideoID = "mv"
         case podcastMetadata = "_meloxPodcastMetadata"
+        case gatewayReference = "_meloxGatewayReference"
+        case gatewayReferences = "_meloxGatewayReferences"
     }
 
     init(
@@ -251,7 +255,9 @@ struct Song: Codable, Hashable, Identifiable {
         copyright: Int? = nil,
         musicVideoID: Int? = nil,
         podcastMetadata: PodcastPlaybackMetadata? = nil,
-        audioAvailability: SongAudioAvailability = .unknown
+        audioAvailability: SongAudioAvailability = .unknown,
+        gatewayReference: GatewayTrackReference? = nil,
+        gatewayReferences: [GatewayTrackReference] = []
     ) {
         self.id = id
         self.name = name
@@ -268,6 +274,8 @@ struct Song: Codable, Hashable, Identifiable {
         self.musicVideoID = musicVideoID
         self.podcastMetadata = podcastMetadata
         self.audioAvailability = audioAvailability
+        self.gatewayReference = gatewayReference
+        self.gatewayReferences = gatewayReferences.isEmpty ? gatewayReference.map { [$0] } ?? [] : gatewayReferences
     }
 
     init(from decoder: Decoder) throws {
@@ -294,6 +302,12 @@ struct Song: Codable, Hashable, Identifiable {
             PodcastPlaybackMetadata.self,
             forKey: .podcastMetadata
         )
+        gatewayReference = try container.decodeIfPresent(
+            GatewayTrackReference.self,
+            forKey: .gatewayReference
+        )
+        gatewayReferences = try container.decodeIfPresent([GatewayTrackReference].self, forKey: .gatewayReferences)
+            ?? gatewayReference.map { [$0] } ?? []
         audioAvailability = try SongAudioAvailability(from: decoder)
     }
 
@@ -316,6 +330,11 @@ struct Song: Codable, Hashable, Identifiable {
             podcastMetadata,
             forKey: .podcastMetadata
         )
+        try container.encodeIfPresent(
+            gatewayReference,
+            forKey: .gatewayReference
+        )
+        try container.encode(gatewayReferences, forKey: .gatewayReferences)
         try audioAvailability.encode(to: encoder)
     }
 }

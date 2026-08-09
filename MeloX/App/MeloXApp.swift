@@ -19,10 +19,12 @@ struct MeloXApp: App {
         LyricsNotificationController
     @State private var screenAwakeCoordinator: ScreenAwakeCoordinator
     @State private var releaseNotes: AppReleaseNotesStore
+    @State private var gateway: GatewayProviderStore
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     init() {
         let settings = AppSettings()
+        let gateway = GatewayProviderStore()
         let releaseNotes = AppReleaseNotesStore(
             currentVersion: Bundle.main.appReleaseVersion,
             hadCompletedOnboarding: settings.hasCompletedOnboarding,
@@ -37,6 +39,7 @@ struct MeloXApp: App {
         )
         let player = PlayerStore(
             api: api,
+            gateway: gateway,
             settings: settings,
             downloads: downloads,
             lyricsNotificationController: lyricsNotifications,
@@ -51,7 +54,7 @@ struct MeloXApp: App {
         let phoneWatchSync = PhoneWatchSyncService(
             settings: settings
         )
-        let lyrics = LyricsStore(api: api)
+        let lyrics = LyricsStore(api: api, gateway: gateway)
         let floatingLyrics = FloatingLyricsController(
             player: player,
             settings: settings,
@@ -72,6 +75,7 @@ struct MeloXApp: App {
         )
         _screenAwakeCoordinator = State(initialValue: ScreenAwakeCoordinator())
         _releaseNotes = State(initialValue: releaseNotes)
+        _gateway = State(initialValue: gateway)
     }
 
     var body: some Scene {
@@ -89,6 +93,7 @@ struct MeloXApp: App {
                 .environment(lyricsNotifications)
                 .environment(screenAwakeCoordinator)
                 .environment(releaseNotes)
+                .environment(gateway)
                 .environment(\.effectiveLyricsRefreshRate, effectiveLyricsRefreshRate)
                 .tint(.red)
                 .preferredColorScheme(

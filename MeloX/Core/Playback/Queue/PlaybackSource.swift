@@ -6,7 +6,7 @@ struct PlaybackSource: Equatable, Sendable {
     let format: String?
     let quality: MusicQuality?
 
-    init(
+    nonisolated init(
         url: URL,
         bitrate: Int?,
         format: String?,

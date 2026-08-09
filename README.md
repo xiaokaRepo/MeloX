@@ -322,6 +322,16 @@ MeloX 使用固定 32 秒窗口、FP16 计算精度的 Core ML ML Program；模�
 
 无需部署额外的后端服务，也无需配置第三方 API 地址。
 
+### Xcode 26.3 本地 iOS 调试
+
+Xcode 26.3 同时构建 iOS、Widget 和 Watch target 时，Swift Package 的跨平台产物可能发生并行构建冲突。先在 Xcode 中启动 iOS Simulator，再运行：
+
+```bash
+./scripts/run-local-ios-debug.sh
+```
+
+脚本使用独立的 `build/LocalDebugDerivedData`，并生成未跟踪的 `MeloXLocalDebug.xcodeproj`。该副本保留 iOS App 和 Widget，但不编译 Watch App，因此正式 target、签名与 Scheme 不变。也可以通过 `MELOX_SIMULATOR_ID` 指定已启动的 Simulator。
+
 ## 项目结构
 
 ```text

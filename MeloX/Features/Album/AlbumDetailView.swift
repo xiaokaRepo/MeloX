@@ -7,6 +7,7 @@ struct AlbumDetailView: View {
     @Environment(NeteaseAPI.self) private var api
     @Environment(LibraryStore.self) private var library
     @Environment(DownloadStore.self) private var downloads
+    @Environment(GatewayProviderStore.self) private var gateway
     @Environment(\.colorScheme) private var systemColorScheme
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.setTabViewBottomAccessorySuppressed)
@@ -198,7 +199,9 @@ struct AlbumDetailView: View {
         guard AppFeatureAvailability.downloads else { return [] }
         let unavailableSongIDs = Set(downloads.downloads.map(\.id))
             .union(downloads.activeDownloads.keys)
-        return MusicCollectionDownloadCoordinator.songIDs(in: songs)
+        return MusicCollectionDownloadCoordinator.songIDs(
+            in: songs.filter { $0.gatewayReference == nil }
+        )
             .filter { !unavailableSongIDs.contains($0) }
     }
 
@@ -334,7 +337,10 @@ struct AlbumDetailView: View {
             let (loadedAlbum, loadedSongs) = try await api.album(id: id)
             try await transitionDelay.value
             album = loadedAlbum
-            songs = loadedSongs
+            songs = await mergedGatewaySongs(
+                into: loadedSongs,
+                album: loadedAlbum
+            )
             phase = .loaded
 
             if library.isLoggedIn,
@@ -346,6 +352,39 @@ struct AlbumDetailView: View {
         } catch {
             phase = .failed(error.localizedDescription)
         }
+    }
+
+    private func mergedGatewaySongs(
+        into neteaseSongs: [Song],
+        album: Album
+    ) async -> [Song] {
+        do {
+            let catalog = try await gateway.searchCatalog(
+                query: album.name,
+                limit: 100,
+                filter: GatewayCatalogFilter(
+                    providerID: nil,
+                    platform: nil,
+                    artist: nil,
+                    album: album.name
+                )
+            )
+            var seen = Set(neteaseSongs.map { Self.songKey($0) })
+            let external = catalog?.tracks.map(\.song).filter {
+                seen.insert(Self.songKey($0)).inserted
+            } ?? []
+            return neteaseSongs + external
+        } catch {
+            return neteaseSongs
+        }
+    }
+
+    private static func songKey(_ song: Song) -> String {
+        "\(normalized(song.name))|\(normalized(song.artistText))"
+    }
+
+    private static func normalized(_ value: String) -> String {
+        value.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 
     private func navigationTransitionDelay(

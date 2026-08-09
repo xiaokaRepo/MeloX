@@ -10,6 +10,7 @@ enum SettingsRoute: Hashable {
     case tabLayout
     case content
     case storage
+    case gateway
     case skylineLyrics
     case floatingLyrics
     case developer
@@ -141,6 +142,24 @@ enum SettingsCatalog {
         SettingsCatalogSection(
             title: "内容与存储",
             items: [
+                SettingsCatalogItem(
+                    route: .gateway,
+                    title: "自定义音源",
+                    subtitle: "Gateway 连接、Provider 状态、音质与排序",
+                    systemImage: "server.rack",
+                    keywords: [
+                        "Gateway",
+                        "Provider",
+                        "ChKSz",
+                        "Token",
+                        "歌词",
+                        "连接速度",
+                        "启用",
+                        "排序",
+                        "VIP",
+                        "试听",
+                    ]
+                ),
                 SettingsCatalogItem(
                     route: .content,
                     title: "发现内容",

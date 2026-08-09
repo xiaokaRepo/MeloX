@@ -143,6 +143,8 @@ struct SettingsView: View {
             ContentSettingsView()
         case .storage:
             StorageManagementView()
+        case .gateway:
+            GatewaySettingsView()
         case .skylineLyrics:
             SkylineLyricsSettingsView()
         case .floatingLyrics:

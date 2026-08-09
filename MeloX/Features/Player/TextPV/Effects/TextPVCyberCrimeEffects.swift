@@ -147,8 +147,8 @@ extension TextPVEffectPainter {
                 let spike = index.isMultiple(of: 4) ? 1.8 : 1
                 let currentRadius = radius * (0.55 + random(splatter * 100 + index) * 0.55) * spike
                 let point = CGPoint(
-                    x: center.x + cos(angle) * currentRadius,
-                    y: center.y + sin(angle) * currentRadius
+                    x: center.x + CoreGraphics.cos(angle) * currentRadius,
+                    y: center.y + CoreGraphics.sin(angle) * currentRadius
                 )
                 index == 0 ? blob.move(to: point) : blob.addLine(to: point)
             }
@@ -160,8 +160,8 @@ extension TextPVEffectPainter {
                 let dropRadius = 2 + random(splatter * 20 + drop + 80) * 7
                 context.fill(
                     Path(ellipseIn: CGRect(
-                        x: center.x + cos(angle) * distance - dropRadius,
-                        y: center.y + sin(angle) * distance - dropRadius,
+                        x: center.x + CoreGraphics.cos(angle) * distance - dropRadius,
+                        y: center.y + CoreGraphics.sin(angle) * distance - dropRadius,
                         width: dropRadius * 2,
                         height: dropRadius * 2
                     )),

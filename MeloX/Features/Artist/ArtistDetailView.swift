@@ -6,6 +6,7 @@ struct ArtistDetailView: View {
     @Environment(NeteaseAPI.self) private var api
     @Environment(PlayerStore.self) private var player
     @Environment(LibraryStore.self) private var library
+    @Environment(GatewayProviderStore.self) private var gateway
 
     @State private var artist: Artist?
     @State private var songs: [Song] = []
@@ -62,22 +63,32 @@ struct ArtistDetailView: View {
             }
 
             Section("热门歌曲") {
-                ForEach(Array(songs.prefix(20).enumerated()), id: \.element.id) { index, song in
+                ForEach(Array(displayedSongs.enumerated()), id: \.element.id) { index, song in
                     Button {
                         Task {
                             await player.play(song, in: songs, sourceID: artist.id)
                         }
                     } label: {
-                        TrackRowView(song: song, index: index)
+                        HStack(spacing: 8) {
+                            TrackRowView(song: song, index: index)
+                            if let reference = song.gatewayReference {
+                                Image(systemName: reference.systemImage)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityLabel(reference.platform)
+                            }
+                        }
                     }
                     .buttonStyle(.plain)
                     .swipeActions(edge: .trailing) {
-                        Button {
-                            library.toggle(song: song)
-                        } label: {
-                            Label("收藏", systemImage: library.contains(song: song) ? "heart.slash" : "heart")
+                        if song.gatewayReference == nil {
+                            Button {
+                                library.toggle(song: song)
+                            } label: {
+                                Label("收藏", systemImage: library.contains(song: song) ? "heart.slash" : "heart")
+                            }
+                            .tint(.pink)
                         }
-                        .tint(.pink)
                     }
                 }
             }
@@ -107,12 +118,61 @@ struct ArtistDetailView: View {
     private func load() async {
         phase = .loading
         do {
-            (artist, songs, albums) = try await api.artist(id: id)
+            let result = try await api.artist(id: id)
+            artist = result.0
+            albums = result.2
+            songs = await mergedGatewaySongs(
+                into: result.1,
+                artist: result.0
+            )
             phase = .loaded
         } catch is CancellationError {
             return
         } catch {
             phase = .failed(error.localizedDescription)
         }
+    }
+
+    private var displayedSongs: [Song] {
+        Array(songs.filter { $0.gatewayReference == nil }.prefix(20))
+            + songs.filter { $0.gatewayReference != nil }
+    }
+
+    private func mergedGatewaySongs(
+        into neteaseSongs: [Song],
+        artist: Artist
+    ) async -> [Song] {
+        do {
+            let catalog = try await gateway.searchCatalog(
+                query: artist.name,
+                limit: 100,
+                filter: GatewayCatalogFilter(
+                    providerID: nil,
+                    platform: nil,
+                    artist: artist.name,
+                    album: nil
+                )
+            )
+            var seen = Set<String>()
+            return (neteaseSongs + (catalog?.tracks.map(\.song) ?? [])).filter {
+                seen.insert(Self.songKey($0)).inserted
+            }
+        } catch {
+            return neteaseSongs
+        }
+    }
+
+    private static func songKey(_ song: Song) -> String {
+        let artists = song.artists
+            .map { normalized($0.name) }
+            .sorted()
+            .joined(separator: ",")
+        return "\(normalized(song.name))|\(artists)"
+    }
+
+    private static func normalized(_ value: String) -> String {
+        (value.applyingTransform(StringTransform("Traditional-Simplified"), reverse: false) ?? value)
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber }
     }
 }

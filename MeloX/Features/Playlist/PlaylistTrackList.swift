@@ -71,7 +71,8 @@ private struct PlaylistTrackRow: View {
     }
 
     private var canSelectForDownload: Bool {
-        !downloads.contains(songID: song.id)
+        song.gatewayReference == nil
+            && !downloads.contains(songID: song.id)
             && !downloads.isDownloading(songID: song.id)
     }
 
@@ -118,7 +119,12 @@ private struct PlaylistTrackRow: View {
             .accessibilityLabel(primaryActionAccessibilityLabel)
             .accessibilityValue(primaryActionAccessibilityValue)
 
-            if AppFeatureAvailability.downloads {
+            if song.gatewayReference != nil {
+                Image(systemName: song.gatewayReference?.systemImage ?? "network")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(song.gatewayReference?.platform ?? "外部音源")
+            } else if AppFeatureAvailability.downloads {
                 if downloads.isDownloading(songID: song.id) {
                     ProgressView()
                         .controlSize(.mini)
@@ -143,7 +149,8 @@ private struct PlaylistTrackRow: View {
                         )
                     }
 
-                    if AppFeatureAvailability.downloads {
+                    if song.gatewayReference == nil,
+                       AppFeatureAvailability.downloads {
                         if downloads.isDownloading(songID: song.id) {
                             Button {
                                 downloads.cancel(songID: song.id)
@@ -169,37 +176,39 @@ private struct PlaylistTrackRow: View {
                         }
                     }
 
-                    Button {
-                        openMusicRoute(.song(song))
-                    } label: {
-                        Label("歌曲资料", systemImage: "info.circle")
-                    }
+                    if song.gatewayReference == nil {
+                        Button {
+                            openMusicRoute(.song(song))
+                        } label: {
+                            Label("歌曲资料", systemImage: "info.circle")
+                        }
 
-                    Button {
-                        library.toggle(song: song)
-                    } label: {
-                        Label(
-                            library.contains(song: song) ? "取消喜欢" : "喜欢歌曲",
-                            systemImage: library.contains(song: song) ? "heart.slash" : "heart"
-                        )
-                    }
+                        Button {
+                            library.toggle(song: song)
+                        } label: {
+                            Label(
+                                library.contains(song: song) ? "取消喜欢" : "喜欢歌曲",
+                                systemImage: library.contains(song: song) ? "heart.slash" : "heart"
+                            )
+                        }
 
-                    Button {
-                        presentedSheet = .comments(song)
-                    } label: {
-                        Label("评论", systemImage: "bubble.left.and.bubble.right")
-                    }
+                        Button {
+                            presentedSheet = .comments(song)
+                        } label: {
+                            Label("评论", systemImage: "bubble.left.and.bubble.right")
+                        }
 
-                    Button {
-                        presentedSheet = .addToPlaylist(song)
-                    } label: {
-                        Label("添加到歌单", systemImage: "text.badge.plus")
-                    }
+                        Button {
+                            presentedSheet = .addToPlaylist(song)
+                        } label: {
+                            Label("添加到歌单", systemImage: "text.badge.plus")
+                        }
 
-                    Menu {
-                        NeteaseShareMenuContent(resource: .song(song))
-                    } label: {
-                        Label("分享", systemImage: "square.and.arrow.up")
+                        Menu {
+                            NeteaseShareMenuContent(resource: .song(song))
+                        } label: {
+                            Label("分享", systemImage: "square.and.arrow.up")
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis")

@@ -118,6 +118,9 @@ final class PlayerStore {
     @ObservationIgnored
     private let api: NeteaseAPI
 
+    @ObservationIgnored
+    private let gateway: GatewayProviderStore
+
     private var currentSongAudioAvailability:
         SongAudioAvailability = .unknown
 
@@ -216,6 +219,7 @@ final class PlayerStore {
 
     init(
         api: NeteaseAPI,
+        gateway: GatewayProviderStore,
         settings: AppSettings,
         downloads: DownloadStore,
         lyricsNotificationController:
@@ -224,6 +228,7 @@ final class PlayerStore {
         onPlaybackRecorded: @escaping (Song) -> Void = { _ in }
     ) {
         self.api = api
+        self.gateway = gateway
         self.settings = settings
         self.downloads = downloads
         self.persistence = persistence ?? PlaybackPersistence()
@@ -952,7 +957,8 @@ final class PlayerStore {
 
         do {
             var sourceSong = song
-            if !song.audioAvailability.isKnown,
+            if song.gatewayReference == nil,
+               !song.audioAvailability.isKnown,
                let detailedSong = try? await api.songDetails(
                    ids: [song.id]
                ).first {
@@ -968,7 +974,7 @@ final class PlayerStore {
                 source = downloadedSource
                 isUsingDownloadedSource = true
             } else {
-                source = try await api.playbackSource(for: sourceSong)
+                source = try await resolvedPlaybackSource(for: sourceSong)
             }
             guard generation == loadGeneration, currentSong?.id == song.id else { return }
             isResolvingSource = false
@@ -990,6 +996,32 @@ final class PlayerStore {
             updateNowPlayingState()
             persistSnapshot()
         }
+    }
+
+    private func resolvedPlaybackSource(
+        for song: Song
+    ) async throws -> PlaybackSource {
+        if song.gatewayReference != nil {
+            guard let source = try await gateway.resolvePlaybackSource(
+                for: song,
+                quality: settings.quality
+            ) else {
+                throw GatewayClientError.invalidConfiguration
+            }
+            return source
+        }
+        do {
+            if let source = try await gateway.resolvePlaybackSource(
+                for: song,
+                quality: settings.quality
+            ) {
+                return source
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+        }
+        return try await api.playbackSource(for: song)
     }
 
     private func handlePlaybackEnded() async {
