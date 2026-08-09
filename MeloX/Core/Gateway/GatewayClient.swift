@@ -84,7 +84,8 @@ actor GatewayClient {
             url: url,
             bitrate: source.bitrate,
             format: source.format,
-            quality: source.quality.flatMap(MusicQuality.init(apiLevel:))
+            quality: source.quality.flatMap(MusicQuality.init(apiLevel:)),
+            origin: .gateway
         )
     }
 

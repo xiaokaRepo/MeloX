@@ -131,7 +131,8 @@ final class DownloadStore {
             url: storage.fileURL(fileName: download.fileName),
             bitrate: download.bitrate,
             format: download.format,
-            quality: download.quality
+            quality: download.quality,
+            origin: .download
         )
     }
 

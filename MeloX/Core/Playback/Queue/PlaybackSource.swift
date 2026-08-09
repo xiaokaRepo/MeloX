@@ -1,21 +1,30 @@
 import Foundation
 
+enum PlaybackSourceOrigin: Equatable, Sendable {
+    case netease
+    case gateway
+    case download
+}
+
 struct PlaybackSource: Equatable, Sendable {
     let url: URL
     let bitrate: Int?
     let format: String?
     let quality: MusicQuality?
+    let origin: PlaybackSourceOrigin
 
     nonisolated init(
         url: URL,
         bitrate: Int?,
         format: String?,
-        quality: MusicQuality? = nil
+        quality: MusicQuality? = nil,
+        origin: PlaybackSourceOrigin = .netease
     ) {
         self.url = url
         self.bitrate = bitrate
         self.format = format
         self.quality = quality
+        self.origin = origin
     }
 
     var preferredForwardBufferDuration: TimeInterval {

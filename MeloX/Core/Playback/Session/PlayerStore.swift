@@ -1051,7 +1051,18 @@ final class PlayerStore {
             return
         }
 
-        if let song = currentSong {
+        let isPlaybackItemFailure: Bool
+        if let playbackError = error as? AudioPlaybackError,
+           case .itemFailed = playbackError {
+            isPlaybackItemFailure = true
+        } else {
+            isPlaybackItemFailure = false
+        }
+        let suppressesGatewayItemFailure =
+            currentPlaybackSource?.origin == .gateway
+                && isPlaybackItemFailure
+        if let song = currentSong,
+           !suppressesGatewayItemFailure {
             playbackIssue = PlaybackIssue(song: song, error: error)
         }
         isLoading = false
