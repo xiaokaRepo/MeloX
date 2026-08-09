@@ -299,9 +299,7 @@ struct SearchView: View {
             errors.append(error.localizedDescription)
         }
 
-        if request.kind == .songs
-            || request.kind == .albums
-            || request.kind == .artists {
+        if needsGatewayFallback(for: request.kind) {
             do {
                 if let catalog = try await gateway.searchCatalog(
                     query: keywords,
@@ -323,6 +321,19 @@ struct SearchView: View {
             completedRequest = request
         } else {
             phase = .failed(errors.first ?? "没有可用的搜索服务。")
+        }
+    }
+
+    private func needsGatewayFallback(for kind: SearchKind) -> Bool {
+        switch kind {
+        case .songs:
+            songs.isEmpty
+        case .albums:
+            albums.isEmpty
+        case .artists:
+            artists.isEmpty
+        case .playlists, .podcasts:
+            false
         }
     }
 
