@@ -176,6 +176,7 @@ nonisolated struct GatewayResolvedSource: Decodable, Sendable {
     let bitrate: Int?
     let format: String?
     let quality: String?
+    let headers: [String: String]?
 }
 
 nonisolated enum GatewayCapability: String, Codable, Hashable, Sendable {

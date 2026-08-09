@@ -20,7 +20,10 @@ final class AudioPlaybackItemFactory {
         autoMixEqualizerState:
             SharedAutoMixEqualizerState
     ) async -> AVPlayerItem {
-        let asset = AVURLAsset(url: source.url)
+        let options: [String: Any]? = source.httpHeaders.isEmpty
+            ? nil
+            : ["AVURLAssetHTTPHeaderFieldsKey": source.httpHeaders]
+        let asset = AVURLAsset(url: source.url, options: options)
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration =
             max(

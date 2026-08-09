@@ -12,19 +12,22 @@ struct PlaybackSource: Equatable, Sendable {
     let format: String?
     let quality: MusicQuality?
     let origin: PlaybackSourceOrigin
+    let httpHeaders: [String: String]
 
     nonisolated init(
         url: URL,
         bitrate: Int?,
         format: String?,
         quality: MusicQuality? = nil,
-        origin: PlaybackSourceOrigin = .netease
+        origin: PlaybackSourceOrigin = .netease,
+        httpHeaders: [String: String] = [:]
     ) {
         self.url = url
         self.bitrate = bitrate
         self.format = format
         self.quality = quality
         self.origin = origin
+        self.httpHeaders = httpHeaders
     }
 
     var preferredForwardBufferDuration: TimeInterval {

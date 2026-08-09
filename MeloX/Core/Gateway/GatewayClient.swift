@@ -75,7 +75,8 @@ actor GatewayClient {
         )
         guard response.status == "matched",
               let source = response.source,
-              let url = URL(string: source.url),
+              let responseURL = URL(string: source.url),
+              let url = Self.preferredPlaybackURL(responseURL),
               let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https" else {
             throw GatewayClientError.invalidResponse
@@ -85,7 +86,8 @@ actor GatewayClient {
             bitrate: source.bitrate,
             format: source.format,
             quality: source.quality.flatMap(MusicQuality.init(apiLevel:)),
-            origin: .gateway
+            origin: .gateway,
+            httpHeaders: source.headers ?? [:]
         )
     }
 
@@ -172,6 +174,36 @@ actor GatewayClient {
         pathComponent.addingPercentEncoding(
             withAllowedCharacters: .urlPathAllowed
         ) ?? pathComponent
+    }
+
+    private static func preferredPlaybackURL(_ url: URL) -> URL? {
+        guard url.scheme?.lowercased() == "http",
+              let host = url.host?.lowercased(),
+              !isLocalNetworkHost(host) else {
+            return url
+        }
+        var components = URLComponents(
+            url: url,
+            resolvingAgainstBaseURL: false
+        )
+        components?.scheme = "https"
+        return components?.url
+    }
+
+    private static func isLocalNetworkHost(_ host: String) -> Bool {
+        if host == "localhost" || host == "::1"
+            || host.hasSuffix(".local") || host.hasPrefix("127.")
+            || host.hasPrefix("169.254.")
+            || host.hasPrefix("192.168.")
+            || host.hasPrefix("fe80:") || host.hasPrefix("fc")
+            || host.hasPrefix("fd") {
+            return true
+        }
+        let parts = host.split(separator: ".").compactMap { Int($0) }
+        if parts.count == 4, parts[0] == 10 { return true }
+        if parts.count == 4, parts[0] == 172,
+           (16...31).contains(parts[1]) { return true }
+        return false
     }
 }
 
