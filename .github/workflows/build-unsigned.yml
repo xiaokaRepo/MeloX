@@ -128,12 +128,7 @@ jobs:
     needs:
       - select_run
       - build
-    if: >-
-      needs.select_run.outputs.should_build == 'true' &&
-      needs.build.result == 'success' &&
-      !startsWith(github.ref, 'refs/tags/v') &&
-      (github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository)
+    if: ${{ false }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -311,10 +306,7 @@ jobs:
       - select_run
       - build
       - release
-    if: >-
-      startsWith(github.ref, 'refs/tags/v') &&
-      needs.build.result == 'success' &&
-      needs.release.result == 'success'
+    if: ${{ false }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
