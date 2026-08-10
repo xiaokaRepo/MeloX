@@ -152,6 +152,7 @@ struct MusicCollectionPosterWallScreen: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(AppSettings.self) private var settings
     @Environment(PlayerStore.self) private var player
 
     var body: some View {
@@ -172,6 +173,12 @@ struct MusicCollectionPosterWallScreen: View {
                     loadedTrackOffset: loadedTrackOffset,
                     isLoadingMoreTracks: isLoadingMoreTracks,
                     loadMoreTracksError: loadMoreTracksError,
+                    horizontalMotionEnabled:
+                        settings.playlistDisplay.horizontalMotionEnabled,
+                    verticalMotionEnabled:
+                        settings.playlistDisplay.verticalMotionEnabled,
+                    randomFlipEnabled:
+                        settings.playlistDisplay.randomFlipEnabled,
                     onRetry: onRetry,
                     onLoadMore: onLoadMore
                 )
@@ -243,64 +250,66 @@ private struct PosterWallFloatingMiniPlayer: View {
 
     var body: some View {
         if let song = player.currentSong {
-            HStack(spacing: 10) {
-                Button(action: onExpand) {
-                    HStack(spacing: 10) {
-                        ArtworkImage(
-                            url: song.album?.artworkURL,
-                            cornerRadius: 9
-                        )
-                        .frame(width: 44, height: 44)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(song.name)
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-
-                            Text(song.artistText)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("当前播放：\(song.name)，\(song.artistText)")
-
-                if player.isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(width: 38, height: 38)
-                        .accessibilityLabel("正在载入")
-                } else {
-                    Button {
-                        player.togglePlayback()
-                    } label: {
-                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.title3.weight(.semibold))
-                            .contentTransition(
-                                accessibilityReduceMotion
-                                    ? .identity
-                                    : .symbolEffect(.replace.downUp.wholeSymbol)
+            GlassEffectContainer(spacing: 6) {
+                HStack(spacing: 8) {
+                    Button(action: onExpand) {
+                        HStack(spacing: 8) {
+                            ArtworkImage(
+                                url: song.album?.artworkURL,
+                                cornerRadius: 8
                             )
-                            .frame(width: 38, height: 38)
-                            .contentShape(.circle)
+                            .frame(width: 36, height: 36)
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(song.name)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+
+                                Text(song.artistText)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(player.isPlaying ? "暂停" : "播放")
+                    .accessibilityLabel("当前播放：\(song.name)，\(song.artistText)")
+
+                    if player.isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 32, height: 32)
+                            .accessibilityLabel("正在载入")
+                    } else {
+                        Button {
+                            player.togglePlayback()
+                        } label: {
+                            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.body.weight(.semibold))
+                                .contentTransition(
+                                    accessibilityReduceMotion
+                                        ? .identity
+                                        : .symbolEffect(.replace.downUp.wholeSymbol)
+                                )
+                                .frame(width: 32, height: 32)
+                                .contentShape(.circle)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(player.isPlaying ? "暂停" : "播放")
+                    }
                 }
+                .padding(.leading, 6)
+                .padding(.trailing, 8)
+                .padding(.vertical, 6)
+                .glassEffect(
+                    .regular.interactive(),
+                    in: .rect(cornerRadius: 24)
+                )
             }
-            .padding(.leading, 8)
-            .padding(.trailing, 10)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: .rect(cornerRadius: 28))
-            .overlay {
-                RoundedRectangle(cornerRadius: 28)
-                    .stroke(.white.opacity(0.20), lineWidth: 0.5)
-            }
-            .shadow(color: .black.opacity(0.24), radius: 20, y: 10)
+            .frame(maxWidth: 288)
+            .shadow(color: .black.opacity(0.20), radius: 16, y: 8)
         }
     }
 }
@@ -315,6 +324,9 @@ struct MusicCollectionPosterWallContent: View {
     let loadedTrackOffset: Int
     let isLoadingMoreTracks: Bool
     let loadMoreTracksError: String?
+    let horizontalMotionEnabled: Bool
+    let verticalMotionEnabled: Bool
+    let randomFlipEnabled: Bool
     let onRetry: () -> Void
     let onLoadMore: () async -> Void
 
@@ -360,7 +372,10 @@ struct MusicCollectionPosterWallContent: View {
                     MusicCollectionPosterMosaicBlockView(
                         block: block,
                         tracks: tracks,
-                        sourceID: sourceID
+                        sourceID: sourceID,
+                        horizontalMotionEnabled: horizontalMotionEnabled,
+                        verticalMotionEnabled: verticalMotionEnabled,
+                        randomFlipEnabled: randomFlipEnabled
                     )
                 }
 
@@ -387,6 +402,9 @@ private struct MusicCollectionPosterMosaicBlockView: View {
     let block: MusicCollectionPosterMosaicBlock
     let tracks: [Song]
     let sourceID: Int
+    let horizontalMotionEnabled: Bool
+    let verticalMotionEnabled: Bool
+    let randomFlipEnabled: Bool
 
     private static let leadingLargeTemplate = [
         MusicCollectionPosterMosaicTile(column: 0, row: 0, span: 2),
@@ -442,7 +460,11 @@ private struct MusicCollectionPosterMosaicBlockView: View {
                         song: song,
                         tracks: tracks,
                         sourceID: sourceID,
-                        isLarge: tile.span > 1
+                        isLarge: tile.span > 1,
+                        horizontalMotionEnabled: horizontalMotionEnabled,
+                        verticalMotionEnabled: verticalMotionEnabled,
+                        randomFlipEnabled: randomFlipEnabled,
+                        motionSeed: (block.id * 10) + index
                     )
                     .frame(
                         width: unit * tile.span,
@@ -464,7 +486,12 @@ private struct MusicCollectionPosterTile: View {
     let tracks: [Song]
     let sourceID: Int
     let isLarge: Bool
+    let horizontalMotionEnabled: Bool
+    let verticalMotionEnabled: Bool
+    let randomFlipEnabled: Bool
+    let motionSeed: Int
 
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(PlayerStore.self) private var player
 
     private var isCurrentSong: Bool {
@@ -472,30 +499,72 @@ private struct MusicCollectionPosterTile: View {
     }
 
     var body: some View {
-        Button(action: primaryAction) {
-            ZStack {
-                ArtworkImage(
-                    url: song.album?.artworkURL,
-                    cornerRadius: 0
-                )
+        TimelineView(.animation(minimumInterval: 1 / 30)) { context in
+            let motion = motionValues(at: context.date)
 
-                if isCurrentSong {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font((isLarge ? Font.body : .caption).weight(.bold))
-                        .foregroundStyle(.primary)
-                        .frame(
-                            width: isLarge ? 48 : 34,
-                            height: isLarge ? 48 : 34
-                        )
-                        .background(.regularMaterial, in: Circle())
-                        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+            Button(action: primaryAction) {
+                ZStack {
+                    ArtworkImage(
+                        url: song.album?.artworkURL,
+                        cornerRadius: 0
+                    )
+                    .scaleEffect(motion.scale)
+                    .offset(x: motion.x, y: motion.y)
+                    .rotation3DEffect(
+                        .degrees(motion.rotation),
+                        axis: (x: 0, y: 1, z: 0),
+                        perspective: 0.35
+                    )
+
+                    if isCurrentSong {
+                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                            .font((isLarge ? Font.body : .caption).weight(.bold))
+                            .foregroundStyle(.primary)
+                            .frame(
+                                width: isLarge ? 48 : 34,
+                                height: isLarge ? 48 : 34
+                            )
+                            .background(.regularMaterial, in: Circle())
+                            .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+                    }
                 }
+                .contentShape(.rect)
+                .clipped()
             }
-            .contentShape(.rect)
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(song.name)，\(song.artistText)")
+            .accessibilityValue(isCurrentSong ? "正在播放" : "")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(song.name)，\(song.artistText)")
-        .accessibilityValue(isCurrentSong ? "正在播放" : "")
+    }
+
+    private func motionValues(
+        at date: Date
+    ) -> (x: CGFloat, y: CGFloat, rotation: Double, scale: CGFloat) {
+        guard !accessibilityReduceMotion else { return (0, 0, 0, 1) }
+
+        let seconds = date.timeIntervalSinceReferenceDate
+        let phase = Double(motionSeed) * 1.17
+        let direction = motionSeed.isMultiple(of: 2) ? 1.0 : -1.0
+        let horizontal = horizontalMotionEnabled
+            ? sin((seconds / 2.8) + phase) * 10 * direction
+            : 0
+        let vertical = verticalMotionEnabled
+            ? cos((seconds / 3.4) + phase) * 10 * -direction
+            : 0
+        let flipCycle = (seconds / 9.0) + (phase / 2)
+        let flipProgress = max(0, sin(flipCycle * .pi * 2))
+        let shouldFlip = randomFlipEnabled && motionSeed.isMultiple(of: 5)
+        let rotation = shouldFlip && flipProgress > 0.94
+            ? (flipProgress - 0.94) / 0.06 * 180
+            : 0
+
+        let hasTranslation = horizontalMotionEnabled || verticalMotionEnabled
+        return (
+            horizontal,
+            vertical,
+            rotation,
+            hasTranslation ? 1.16 : 1
+        )
     }
 
     private func primaryAction() {

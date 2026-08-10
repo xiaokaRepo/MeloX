@@ -1162,6 +1162,7 @@ final class AppSettings {
     let floatingLyrics: FloatingLyricsPreferences
     let lyricsNotifications: LyricsNotificationPreferences
     let songRecognition: SongRecognitionPreferences
+    let playlistDisplay: PlaylistDisplayPreferences
 
     @ObservationIgnored
     private let defaults: UserDefaults
@@ -1177,6 +1178,7 @@ final class AppSettings {
             defaults: defaults
         )
         songRecognition = SongRecognitionPreferences(defaults: defaults)
+        playlistDisplay = PlaylistDisplayPreferences(defaults: defaults)
         hasCompletedOnboarding = defaults.bool(
             forKey: Key.hasCompletedOnboarding
         )
@@ -1916,5 +1918,6 @@ final class AppSettings {
         previousRestartsCurrentSong = true
         startsHeartModeOnLaunch = Self.defaultStartsHeartModeOnLaunch
         skylineLyrics.reset()
+        playlistDisplay.reset()
     }
 }

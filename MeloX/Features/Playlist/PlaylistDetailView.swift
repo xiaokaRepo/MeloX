@@ -6,6 +6,7 @@ struct PlaylistDetailView: View {
     private let prefersToplistLayout: Bool
 
     @Environment(NeteaseAPI.self) private var api
+    @Environment(AppSettings.self) private var settings
     @Environment(LibraryStore.self) private var library
     @Environment(DownloadStore.self) private var downloads
     @Environment(\.colorScheme) private var systemColorScheme
@@ -20,6 +21,7 @@ struct PlaylistDetailView: View {
     @State private var blurredBackdropImage: CGImage?
     @State private var searchQuery = ""
     @State private var isPosterWallPresented = false
+    @State private var hasAppliedPreferredDisplayMode = false
     @State private var loadedTrackOffset = 0
     @State private var isLoadingMoreTracks = false
     @State private var loadMoreTracksError: String?
@@ -120,6 +122,11 @@ struct PlaylistDetailView: View {
         }
         .onAppear {
             updateTabViewBottomAccessoryVisibility()
+            if !hasAppliedPreferredDisplayMode,
+               settings.playlistDisplay.mode == .posterWall {
+                hasAppliedPreferredDisplayMode = true
+                isPosterWallPresented = true
+            }
         }
         .onChange(of: downloadCoordinator.isSelecting) {
             updateTabViewBottomAccessoryVisibility()
@@ -329,13 +336,7 @@ struct PlaylistDetailView: View {
     private var posterWallToolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Button {
-                if accessibilityReduceMotion {
-                    isPosterWallPresented = true
-                } else {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isPosterWallPresented = true
-                    }
-                }
+                presentPosterWall()
             } label: {
                 Image(
                     systemName: MusicCollectionPresentationMode
@@ -344,6 +345,16 @@ struct PlaylistDetailView: View {
                 )
             }
             .accessibilityLabel("打开海报墙模式")
+        }
+    }
+
+    private func presentPosterWall() {
+        if accessibilityReduceMotion {
+            isPosterWallPresented = true
+        } else {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isPosterWallPresented = true
+            }
         }
     }
 
