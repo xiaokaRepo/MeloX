@@ -17,6 +17,22 @@ enum PlaylistDisplayMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum PlaylistLandscapeDisplayMode: String, CaseIterable, Identifiable {
+    case posterWall
+    case coverFlow
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .posterWall:
+            "封面墙"
+        case .coverFlow:
+            "Cover Flow"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class PlaylistDisplayPreferences {
@@ -26,8 +42,12 @@ final class PlaylistDisplayPreferences {
             "melox.playlist.posterWall.horizontalMotionEnabled"
         static let verticalMotionEnabled =
             "melox.playlist.posterWall.verticalMotionEnabled"
+        static let motionSpeed =
+            "melox.playlist.posterWall.motionSpeed"
         static let randomFlipEnabled =
             "melox.playlist.posterWall.randomFlipEnabled"
+        static let landscapeMode =
+            "melox.playlist.landscape.display.mode"
     }
 
     var mode: PlaylistDisplayMode {
@@ -52,9 +72,19 @@ final class PlaylistDisplayPreferences {
         }
     }
 
+    var motionSpeed: Double {
+        didSet { defaults.set(motionSpeed, forKey: Key.motionSpeed) }
+    }
+
     var randomFlipEnabled: Bool {
         didSet {
             defaults.set(randomFlipEnabled, forKey: Key.randomFlipEnabled)
+        }
+    }
+
+    var landscapeMode: PlaylistLandscapeDisplayMode {
+        didSet {
+            defaults.set(landscapeMode.rawValue, forKey: Key.landscapeMode)
         }
     }
 
@@ -72,15 +102,24 @@ final class PlaylistDisplayPreferences {
         verticalMotionEnabled = defaults.object(
             forKey: Key.verticalMotionEnabled
         ) as? Bool ?? true
+        motionSpeed = min(
+            max(defaults.object(forKey: Key.motionSpeed) as? Double ?? 1, 0.5),
+            2
+        )
         randomFlipEnabled = defaults.object(
             forKey: Key.randomFlipEnabled
         ) as? Bool ?? true
+        landscapeMode = PlaylistLandscapeDisplayMode(
+            rawValue: defaults.string(forKey: Key.landscapeMode) ?? ""
+        ) ?? .coverFlow
     }
 
     func reset() {
         mode = .list
         horizontalMotionEnabled = true
         verticalMotionEnabled = true
+        motionSpeed = 1
         randomFlipEnabled = true
+        landscapeMode = .coverFlow
     }
 }

@@ -155,6 +155,9 @@ struct MusicCollectionPosterWallScreen: View {
     @Environment(AppSettings.self) private var settings
     @Environment(PlayerStore.self) private var player
 
+    @State private var coverFlowControlsVisible = true
+    @State private var coverFlowInteractionToken = 0
+
     var body: some View {
         ZStack {
             MusicCollectionArtworkBackdrop(
@@ -162,42 +165,93 @@ struct MusicCollectionPosterWallScreen: View {
                 palette: palette
             )
 
-            ScrollView {
-                MusicCollectionPosterWallContent(
-                    tracks: tracks,
-                    sourceID: playlist.id,
-                    loadingTitle: "正在载入\(playlist.isOfficialToplist ? "排行榜" : "歌单")",
-                    isLoading: isLoading,
-                    failureMessage: failureMessage,
-                    hasMoreTracks: hasMoreTracks,
-                    loadedTrackOffset: loadedTrackOffset,
-                    isLoadingMoreTracks: isLoadingMoreTracks,
-                    loadMoreTracksError: loadMoreTracksError,
-                    horizontalMotionEnabled:
-                        settings.playlistDisplay.horizontalMotionEnabled,
-                    verticalMotionEnabled:
-                        settings.playlistDisplay.verticalMotionEnabled,
-                    randomFlipEnabled:
-                        settings.playlistDisplay.randomFlipEnabled,
-                    onRetry: onRetry,
-                    onLoadMore: onLoadMore
-                )
-            }
-            .scrollIndicators(.hidden)
-            .refreshable {
-                await onRefresh()
-            }
-            .ignoresSafeArea()
+            GeometryReader { proxy in
+                let usesCoverFlow = proxy.size.width > proxy.size.height
+                    && settings.playlistDisplay.landscapeMode == .coverFlow
 
-            posterWallControls
-                .frame(maxHeight: .infinity, alignment: .top)
+                ZStack {
+                    if usesCoverFlow {
+                        MusicCollectionCoverFlowView(
+                            tracks: tracks,
+                            sourceID: playlist.id,
+                            loadingTitle: "正在载入\(playlist.isOfficialToplist ? "排行榜" : "歌单")",
+                            isLoading: isLoading,
+                            failureMessage: failureMessage,
+                            hasMoreTracks: hasMoreTracks,
+                            loadedTrackOffset: loadedTrackOffset,
+                            isLoadingMoreTracks: isLoadingMoreTracks,
+                            loadMoreTracksError: loadMoreTracksError,
+                            onRetry: onRetry,
+                            onLoadMore: onLoadMore,
+                            onInterfaceInteraction: showCoverFlowControls
+                        )
+                        .ignoresSafeArea()
+                    } else {
+                        MusicCollectionPosterWallScrollView(
+                            tracks: tracks,
+                            sourceID: playlist.id,
+                            loadingTitle: "正在载入\(playlist.isOfficialToplist ? "排行榜" : "歌单")",
+                            isLoading: isLoading,
+                            failureMessage: failureMessage,
+                            hasMoreTracks: hasMoreTracks,
+                            loadedTrackOffset: loadedTrackOffset,
+                            isLoadingMoreTracks: isLoadingMoreTracks,
+                            loadMoreTracksError: loadMoreTracksError,
+                            horizontalMotionEnabled:
+                                settings.playlistDisplay.horizontalMotionEnabled,
+                            verticalMotionEnabled:
+                                settings.playlistDisplay.verticalMotionEnabled,
+                            motionSpeed: settings.playlistDisplay.motionSpeed,
+                            randomFlipEnabled:
+                                settings.playlistDisplay.randomFlipEnabled,
+                            viewportWidth: proxy.size.width,
+                            onRetry: onRetry,
+                            onRefresh: onRefresh,
+                            onLoadMore: onLoadMore
+                        )
+                        .frame(width: proxy.size.width)
+                        .clipped()
+                        .ignoresSafeArea()
+                    }
 
-            if player.currentSong != nil {
-                PosterWallFloatingMiniPlayer(onExpand: { dismiss() })
-                    .padding(.horizontal, 16)
-                    .safeAreaPadding(.bottom, 8)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    if player.currentSong != nil, !usesCoverFlow {
+                        PosterWallFloatingMiniPlayer(onExpand: { dismiss() })
+                            .padding(.horizontal, 16)
+                            .safeAreaPadding(.bottom, 8)
+                            .frame(
+                                maxWidth: .infinity,
+                                maxHeight: .infinity,
+                                alignment: .bottom
+                            )
+                            .transition(
+                                .move(edge: .bottom).combined(with: .opacity)
+                            )
+                    }
+
+                    if !usesCoverFlow || coverFlowControlsVisible {
+                        posterWallControls
+                            .frame(maxHeight: .infinity, alignment: .top)
+                            .transition(.opacity)
+                    }
+                }
+                .task(id: "\(usesCoverFlow)-\(coverFlowInteractionToken)") {
+                    guard usesCoverFlow else {
+                        coverFlowControlsVisible = true
+                        return
+                    }
+
+                    coverFlowControlsVisible = true
+                    try? await Task.sleep(for: .seconds(2.8))
+                    guard !Task.isCancelled else { return }
+
+                    if accessibilityReduceMotion {
+                        coverFlowControlsVisible = false
+                    } else {
+                        withAnimation(.easeOut(duration: 0.28)) {
+                            coverFlowControlsVisible = false
+                        }
+                    }
+                }
             }
         }
         .animation(
@@ -208,6 +262,17 @@ struct MusicCollectionPosterWallScreen: View {
         )
         .preferredColorScheme(palette.colorScheme)
         .presentationBackground(.clear)
+    }
+
+    private func showCoverFlowControls() {
+        coverFlowInteractionToken += 1
+        if accessibilityReduceMotion {
+            coverFlowControlsVisible = true
+        } else {
+            withAnimation(.easeOut(duration: 0.18)) {
+                coverFlowControlsVisible = true
+            }
+        }
     }
 
     private var posterWallControls: some View {
@@ -239,6 +304,95 @@ struct MusicCollectionPosterWallScreen: View {
         .foregroundStyle(.primary)
         .padding(.horizontal, 16)
         .safeAreaPadding(.top, 8)
+    }
+}
+
+private struct MusicCollectionPosterWallScrollView: View {
+    let tracks: [Song]
+    let sourceID: Int
+    let loadingTitle: String
+    let isLoading: Bool
+    let failureMessage: String?
+    let hasMoreTracks: Bool
+    let loadedTrackOffset: Int
+    let isLoadingMoreTracks: Bool
+    let loadMoreTracksError: String?
+    let horizontalMotionEnabled: Bool
+    let verticalMotionEnabled: Bool
+    let motionSpeed: Double
+    let randomFlipEnabled: Bool
+    let viewportWidth: CGFloat
+    let onRetry: () -> Void
+    let onRefresh: () async -> Void
+    let onLoadMore: () async -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    private let horizontalTravel: CGFloat = 64
+    private let verticalTravel: CGFloat = 48
+
+    var body: some View {
+        ScrollView {
+            TimelineView(
+                .animation(
+                    minimumInterval: 1 / 30,
+                    paused: pausesMotion
+                )
+            ) { context in
+                let offset = motionOffset(at: context.date)
+
+                MusicCollectionPosterWallContent(
+                    tracks: tracks,
+                    sourceID: sourceID,
+                    loadingTitle: loadingTitle,
+                    isLoading: isLoading,
+                    failureMessage: failureMessage,
+                    hasMoreTracks: hasMoreTracks,
+                    loadedTrackOffset: loadedTrackOffset,
+                    isLoadingMoreTracks: isLoadingMoreTracks,
+                    loadMoreTracksError: loadMoreTracksError,
+                    randomFlipEnabled: randomFlipEnabled,
+                    onRetry: onRetry,
+                    onLoadMore: onLoadMore
+                )
+                .frame(width: canvasWidth)
+                .padding(.bottom, verticalMotionEnabled ? verticalTravel : 0)
+                .offset(offset)
+            }
+        }
+        .scrollIndicators(.hidden)
+        .refreshable {
+            await onRefresh()
+        }
+    }
+
+    private var pausesMotion: Bool {
+        accessibilityReduceMotion
+            || (!horizontalMotionEnabled && !verticalMotionEnabled)
+            || tracks.isEmpty
+    }
+
+    private var canvasWidth: CGFloat {
+        viewportWidth + (horizontalMotionEnabled ? horizontalTravel : 0)
+    }
+
+    private func motionOffset(at date: Date) -> CGSize {
+        guard !pausesMotion else { return .zero }
+
+        let cycleDuration = 12 / min(max(motionSpeed, 0.5), 2)
+        let angle = date.timeIntervalSinceReferenceDate
+            * 2 * Double.pi / cycleDuration
+        let horizontalProgress = (sin(angle) + 1) / 2
+        let verticalProgress = (cos(angle * 0.84) + 1) / 2
+
+        return CGSize(
+            width: horizontalMotionEnabled
+                ? horizontalTravel * (0.5 - horizontalProgress)
+                : 0,
+            height: verticalMotionEnabled
+                ? -verticalTravel * verticalProgress
+                : 0
+        )
     }
 }
 
@@ -324,8 +478,6 @@ struct MusicCollectionPosterWallContent: View {
     let loadedTrackOffset: Int
     let isLoadingMoreTracks: Bool
     let loadMoreTracksError: String?
-    let horizontalMotionEnabled: Bool
-    let verticalMotionEnabled: Bool
     let randomFlipEnabled: Bool
     let onRetry: () -> Void
     let onLoadMore: () async -> Void
@@ -373,8 +525,6 @@ struct MusicCollectionPosterWallContent: View {
                         block: block,
                         tracks: tracks,
                         sourceID: sourceID,
-                        horizontalMotionEnabled: horizontalMotionEnabled,
-                        verticalMotionEnabled: verticalMotionEnabled,
                         randomFlipEnabled: randomFlipEnabled
                     )
                 }
@@ -402,8 +552,6 @@ private struct MusicCollectionPosterMosaicBlockView: View {
     let block: MusicCollectionPosterMosaicBlock
     let tracks: [Song]
     let sourceID: Int
-    let horizontalMotionEnabled: Bool
-    let verticalMotionEnabled: Bool
     let randomFlipEnabled: Bool
 
     private static let leadingLargeTemplate = [
@@ -461,8 +609,6 @@ private struct MusicCollectionPosterMosaicBlockView: View {
                         tracks: tracks,
                         sourceID: sourceID,
                         isLarge: tile.span > 1,
-                        horizontalMotionEnabled: horizontalMotionEnabled,
-                        verticalMotionEnabled: verticalMotionEnabled,
                         randomFlipEnabled: randomFlipEnabled,
                         motionSeed: (block.id * 10) + index
                     )
@@ -486,8 +632,6 @@ private struct MusicCollectionPosterTile: View {
     let tracks: [Song]
     let sourceID: Int
     let isLarge: Bool
-    let horizontalMotionEnabled: Bool
-    let verticalMotionEnabled: Bool
     let randomFlipEnabled: Bool
     let motionSeed: Int
 
@@ -499,8 +643,13 @@ private struct MusicCollectionPosterTile: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30)) { context in
-            let motion = motionValues(at: context.date)
+        TimelineView(
+            .animation(
+                minimumInterval: 1 / 30,
+                paused: accessibilityReduceMotion || !randomFlipEnabled
+            )
+        ) { context in
+            let rotation = flipRotation(at: context.date)
 
             Button(action: primaryAction) {
                 ZStack {
@@ -508,10 +657,8 @@ private struct MusicCollectionPosterTile: View {
                         url: song.album?.artworkURL,
                         cornerRadius: 0
                     )
-                    .scaleEffect(motion.scale)
-                    .offset(x: motion.x, y: motion.y)
                     .rotation3DEffect(
-                        .degrees(motion.rotation),
+                        .degrees(rotation),
                         axis: (x: 0, y: 1, z: 0),
                         perspective: 0.35
                     )
@@ -537,34 +684,17 @@ private struct MusicCollectionPosterTile: View {
         }
     }
 
-    private func motionValues(
-        at date: Date
-    ) -> (x: CGFloat, y: CGFloat, rotation: Double, scale: CGFloat) {
-        guard !accessibilityReduceMotion else { return (0, 0, 0, 1) }
+    private func flipRotation(at date: Date) -> Double {
+        guard !accessibilityReduceMotion, randomFlipEnabled else { return 0 }
 
         let seconds = date.timeIntervalSinceReferenceDate
         let phase = Double(motionSeed) * 1.17
-        let direction = motionSeed.isMultiple(of: 2) ? 1.0 : -1.0
-        let horizontal = horizontalMotionEnabled
-            ? sin((seconds / 2.8) + phase) * 10 * direction
-            : 0
-        let vertical = verticalMotionEnabled
-            ? cos((seconds / 3.4) + phase) * 10 * -direction
-            : 0
         let flipCycle = (seconds / 9.0) + (phase / 2)
         let flipProgress = max(0, sin(flipCycle * .pi * 2))
         let shouldFlip = randomFlipEnabled && motionSeed.isMultiple(of: 5)
-        let rotation = shouldFlip && flipProgress > 0.94
+        return shouldFlip && flipProgress > 0.94
             ? (flipProgress - 0.94) / 0.06 * 180
             : 0
-
-        let hasTranslation = horizontalMotionEnabled || verticalMotionEnabled
-        return (
-            horizontal,
-            vertical,
-            rotation,
-            hasTranslation ? 1.16 : 1
-        )
     }
 
     private func primaryAction() {

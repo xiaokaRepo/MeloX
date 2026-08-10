@@ -131,6 +131,8 @@ struct SettingsView: View {
             PlaybackSettingsView()
         case .playerAppearance:
             PlayerAppearanceSettingsView()
+        case .playlistDisplay:
+            PlaylistDisplaySettingsView()
         case .lyrics:
             LyricsSettingsView()
         case .systemPlayback:

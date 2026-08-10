@@ -7,25 +7,6 @@ struct LyricsSettingsView: View {
         Form {
             Section {
                 NavigationLink {
-                    PlaylistDisplaySettingsView()
-                } label: {
-                    Label {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("歌单与封面墙")
-                            Text("列表、满屏封面墙与动态效果")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "square.grid.3x3.square")
-                    }
-                }
-            } header: {
-                Text("内容展示")
-            }
-
-            Section {
-                NavigationLink {
                     LyricsAppearanceSettingsView()
                 } label: {
                     Label {

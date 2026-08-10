@@ -4,6 +4,7 @@ enum SettingsRoute: Hashable {
     case accountHome
     case playback
     case playerAppearance
+    case playlistDisplay
     case lyrics
     case systemPlayback
     case general
@@ -77,6 +78,21 @@ enum SettingsCatalog {
         SettingsCatalogSection(
             title: "歌词与显示",
             items: [
+                SettingsCatalogItem(
+                    route: .playlistDisplay,
+                    title: "歌单与封面墙",
+                    subtitle: "列表、整体漂移、横屏 Cover Flow 与动态效果",
+                    systemImage: "square.grid.3x3.square",
+                    keywords: [
+                        "封面墙",
+                        "海报墙",
+                        "Cover Flow",
+                        "横屏",
+                        "漂移",
+                        "速度",
+                        "翻面",
+                    ]
+                ),
                 SettingsCatalogItem(
                     route: .lyrics,
                     title: "歌词",
