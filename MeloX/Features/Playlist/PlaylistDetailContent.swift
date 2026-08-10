@@ -9,9 +9,9 @@ enum MusicCollectionPresentationMode: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .list:
-            "square.grid.2x2"
-        case .posterWall:
             "list.bullet"
+        case .posterWall:
+            "square.grid.2x2"
         }
     }
 
@@ -124,11 +124,15 @@ struct PlaylistDetailContent: View {
     }
 }
 
-private struct MusicCollectionPosterWallItem: Identifiable {
-    let song: Song
-    let aspectRatio: CGFloat
+private struct MusicCollectionPosterMosaicBlock: Identifiable {
+    let id: Int
+    let songs: [Song]
+}
 
-    var id: Int { song.id }
+private struct MusicCollectionPosterMosaicTile {
+    let column: CGFloat
+    let row: CGFloat
+    let span: CGFloat
 }
 
 struct MusicCollectionPosterWallScreen: View {
@@ -142,14 +146,13 @@ struct MusicCollectionPosterWallScreen: View {
     let loadedTrackOffset: Int
     let isLoadingMoreTracks: Bool
     let loadMoreTracksError: String?
-    let downloadSelection: MusicCollectionDownloadCoordinator?
     let onRetry: () -> Void
     let onRefresh: () async -> Void
     let onLoadMore: () async -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(PlayerStore.self) private var player
-    @Namespace private var miniPlayerNamespace
 
     var body: some View {
         ZStack {
@@ -159,49 +162,49 @@ struct MusicCollectionPosterWallScreen: View {
             )
 
             ScrollView {
-                LazyVStack(spacing: 0) {
-                    posterWallHeader
-
-                    MusicCollectionPosterWallContent(
-                        tracks: tracks,
-                        sourceID: playlist.id,
-                        loadingTitle: "正在载入\(playlist.isOfficialToplist ? "排行榜" : "歌单")",
-                        isLoading: isLoading,
-                        failureMessage: failureMessage,
-                        hasMoreTracks: hasMoreTracks,
-                        loadedTrackOffset: loadedTrackOffset,
-                        isLoadingMoreTracks: isLoadingMoreTracks,
-                        loadMoreTracksError: loadMoreTracksError,
-                        downloadSelection: downloadSelection,
-                        onRetry: onRetry,
-                        onLoadMore: onLoadMore
-                    )
-                }
-                .padding(.bottom, 18)
+                MusicCollectionPosterWallContent(
+                    tracks: tracks,
+                    sourceID: playlist.id,
+                    loadingTitle: "正在载入\(playlist.isOfficialToplist ? "排行榜" : "歌单")",
+                    isLoading: isLoading,
+                    failureMessage: failureMessage,
+                    hasMoreTracks: hasMoreTracks,
+                    loadedTrackOffset: loadedTrackOffset,
+                    isLoadingMoreTracks: isLoadingMoreTracks,
+                    loadMoreTracksError: loadMoreTracksError,
+                    onRetry: onRetry,
+                    onLoadMore: onLoadMore
+                )
             }
             .scrollIndicators(.hidden)
             .refreshable {
                 await onRefresh()
             }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+            .ignoresSafeArea()
+
+            posterWallControls
+                .frame(maxHeight: .infinity, alignment: .top)
+
             if player.currentSong != nil {
-                MiniPlayerView(
-                    artworkTransitionID: "poster-wall-now-playing",
-                    artworkTransitionNamespace: miniPlayerNamespace,
-                    onExpand: { dismiss() }
-                )
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial)
+                PosterWallFloatingMiniPlayer(onExpand: { dismiss() })
+                    .padding(.horizontal, 16)
+                    .safeAreaPadding(.bottom, 8)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .animation(
+            accessibilityReduceMotion
+                ? nil
+                : .snappy(duration: 0.28, extraBounce: 0),
+            value: player.currentSong?.id
+        )
         .preferredColorScheme(palette.colorScheme)
         .presentationBackground(.clear)
     }
 
-    private var posterWallHeader: some View {
-        HStack(spacing: 12) {
+    private var posterWallControls: some View {
+        HStack {
             Button {
                 dismiss()
             } label: {
@@ -213,16 +216,7 @@ struct MusicCollectionPosterWallScreen: View {
             .buttonStyle(.plain)
             .accessibilityLabel("关闭海报墙")
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(playlist.name)
-                    .font(.headline.weight(.semibold))
-                    .lineLimit(1)
-                Text(MusicCollectionPresentationMode.posterWall.title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 8)
+            Spacer()
 
             Button {
                 dismiss()
@@ -237,8 +231,77 @@ struct MusicCollectionPosterWallScreen: View {
         }
         .foregroundStyle(.primary)
         .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 16)
+        .safeAreaPadding(.top, 8)
+    }
+}
+
+private struct PosterWallFloatingMiniPlayer: View {
+    let onExpand: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(PlayerStore.self) private var player
+
+    var body: some View {
+        if let song = player.currentSong {
+            HStack(spacing: 10) {
+                Button(action: onExpand) {
+                    HStack(spacing: 10) {
+                        ArtworkImage(
+                            url: song.album?.artworkURL,
+                            cornerRadius: 9
+                        )
+                        .frame(width: 44, height: 44)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(song.name)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+
+                            Text(song.artistText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("当前播放：\(song.name)，\(song.artistText)")
+
+                if player.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 38, height: 38)
+                        .accessibilityLabel("正在载入")
+                } else {
+                    Button {
+                        player.togglePlayback()
+                    } label: {
+                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.title3.weight(.semibold))
+                            .contentTransition(
+                                accessibilityReduceMotion
+                                    ? .identity
+                                    : .symbolEffect(.replace.downUp.wholeSymbol)
+                            )
+                            .frame(width: 38, height: 38)
+                            .contentShape(.circle)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(player.isPlaying ? "暂停" : "播放")
+                }
+            }
+            .padding(.leading, 8)
+            .padding(.trailing, 10)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial, in: .rect(cornerRadius: 28))
+            .overlay {
+                RoundedRectangle(cornerRadius: 28)
+                    .stroke(.white.opacity(0.20), lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(0.24), radius: 20, y: 10)
+        }
     }
 }
 
@@ -252,25 +315,24 @@ struct MusicCollectionPosterWallContent: View {
     let loadedTrackOffset: Int
     let isLoadingMoreTracks: Bool
     let loadMoreTracksError: String?
-    let downloadSelection: MusicCollectionDownloadCoordinator?
     let onRetry: () -> Void
     let onLoadMore: () async -> Void
 
-    private var columns: [[MusicCollectionPosterWallItem]] {
-        var result = [[], []] as [[MusicCollectionPosterWallItem]]
-        var columnHeights = [CGFloat](repeating: 0, count: 2)
-        let aspectRatios: [CGFloat] = [1.0, 0.78, 1.16, 0.88, 1.04, 0.72]
+    private var blocks: [MusicCollectionPosterMosaicBlock] {
+        var result: [MusicCollectionPosterMosaicBlock] = []
+        var startIndex = 0
+        var blockIndex = 0
 
-        for (index, song) in tracks.enumerated() {
-            let aspectRatio = aspectRatios[index % aspectRatios.count]
-            let columnIndex = columnHeights[0] <= columnHeights[1] ? 0 : 1
-            result[columnIndex].append(
-                MusicCollectionPosterWallItem(
-                    song: song,
-                    aspectRatio: aspectRatio
+        while startIndex < tracks.count {
+            let endIndex = min(startIndex + 10, tracks.count)
+            result.append(
+                MusicCollectionPosterMosaicBlock(
+                    id: blockIndex,
+                    songs: Array(tracks[startIndex..<endIndex])
                 )
             )
-            columnHeights[columnIndex] += (1.0 / aspectRatio) + 0.08
+            startIndex = endIndex
+            blockIndex += 1
         }
 
         return result
@@ -293,144 +355,151 @@ struct MusicCollectionPosterWallContent: View {
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, minHeight: 180)
         } else {
-            VStack(spacing: 16) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(columns.indices, id: \.self) { columnIndex in
-                        LazyVStack(spacing: 12) {
-                            ForEach(columns[columnIndex]) { item in
-                                MusicCollectionPosterCard(
-                                    song: item.song,
-                                    tracks: tracks,
-                                    sourceID: sourceID,
-                                    downloadSelection: downloadSelection,
-                                    aspectRatio: item.aspectRatio
-                                )
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .top)
-                    }
+            LazyVStack(spacing: 0) {
+                ForEach(blocks) { block in
+                    MusicCollectionPosterMosaicBlockView(
+                        block: block,
+                        tracks: tracks,
+                        sourceID: sourceID
+                    )
                 }
-                .padding(.horizontal, 16)
 
                 if hasMoreTracks {
-                    MusicCollectionPaginationFooter(
-                        isLoading: isLoadingMoreTracks,
-                        failureMessage: loadMoreTracksError,
-                        loadToken: loadedTrackOffset,
-                        action: onLoadMore
-                    )
+                    ZStack {
+                        Color.black.opacity(0.78)
+
+                        MusicCollectionPaginationFooter(
+                            isLoading: isLoadingMoreTracks,
+                            failureMessage: loadMoreTracksError,
+                            loadToken: loadedTrackOffset,
+                            action: onLoadMore
+                        )
+                    }
+                    .frame(minHeight: 92)
+                    .foregroundStyle(.white)
                 }
             }
         }
     }
 }
 
-private struct MusicCollectionPosterCard: View {
+private struct MusicCollectionPosterMosaicBlockView: View {
+    let block: MusicCollectionPosterMosaicBlock
+    let tracks: [Song]
+    let sourceID: Int
+
+    private static let leadingLargeTemplate = [
+        MusicCollectionPosterMosaicTile(column: 0, row: 0, span: 2),
+        MusicCollectionPosterMosaicTile(column: 2, row: 0, span: 1),
+        MusicCollectionPosterMosaicTile(column: 3, row: 0, span: 1),
+        MusicCollectionPosterMosaicTile(column: 2, row: 1, span: 1),
+        MusicCollectionPosterMosaicTile(column: 3, row: 1, span: 1),
+        MusicCollectionPosterMosaicTile(column: 0, row: 2, span: 1),
+        MusicCollectionPosterMosaicTile(column: 1, row: 2, span: 1),
+        MusicCollectionPosterMosaicTile(column: 0, row: 3, span: 1),
+        MusicCollectionPosterMosaicTile(column: 1, row: 3, span: 1),
+        MusicCollectionPosterMosaicTile(column: 2, row: 2, span: 2),
+    ]
+
+    private static let trailingLargeTemplate = [
+        MusicCollectionPosterMosaicTile(column: 0, row: 0, span: 1),
+        MusicCollectionPosterMosaicTile(column: 1, row: 0, span: 1),
+        MusicCollectionPosterMosaicTile(column: 0, row: 1, span: 1),
+        MusicCollectionPosterMosaicTile(column: 1, row: 1, span: 1),
+        MusicCollectionPosterMosaicTile(column: 2, row: 0, span: 2),
+        MusicCollectionPosterMosaicTile(column: 0, row: 2, span: 2),
+        MusicCollectionPosterMosaicTile(column: 2, row: 2, span: 1),
+        MusicCollectionPosterMosaicTile(column: 3, row: 2, span: 1),
+        MusicCollectionPosterMosaicTile(column: 2, row: 3, span: 1),
+        MusicCollectionPosterMosaicTile(column: 3, row: 3, span: 1),
+    ]
+
+    private var template: [MusicCollectionPosterMosaicTile] {
+        block.id.isMultiple(of: 2)
+            ? Self.leadingLargeTemplate
+            : Self.trailingLargeTemplate
+    }
+
+    private var occupiedRows: CGFloat {
+        template
+            .prefix(block.songs.count)
+            .map { $0.row + $0.span }
+            .max() ?? 1
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let unit = proxy.size.width / 4
+
+            ZStack(alignment: .topLeading) {
+                ForEach(
+                    Array(block.songs.enumerated()),
+                    id: \.element.id
+                ) { index, song in
+                    let tile = template[index]
+
+                    MusicCollectionPosterTile(
+                        song: song,
+                        tracks: tracks,
+                        sourceID: sourceID,
+                        isLarge: tile.span > 1
+                    )
+                    .frame(
+                        width: unit * tile.span,
+                        height: unit * tile.span
+                    )
+                    .offset(
+                        x: unit * tile.column,
+                        y: unit * tile.row
+                    )
+                }
+            }
+        }
+        .aspectRatio(4 / occupiedRows, contentMode: .fit)
+    }
+}
+
+private struct MusicCollectionPosterTile: View {
     let song: Song
     let tracks: [Song]
     let sourceID: Int
-    let downloadSelection: MusicCollectionDownloadCoordinator?
-    let aspectRatio: CGFloat
+    let isLarge: Bool
 
     @Environment(PlayerStore.self) private var player
-    @Environment(DownloadStore.self) private var downloads
 
     private var isCurrentSong: Bool {
         player.currentSong?.id == song.id
     }
 
-    private var isSelectingDownloads: Bool {
-        downloadSelection?.isSelecting == true
-    }
-
-    private var isSelectedForDownload: Bool {
-        downloadSelection?.selectedSongIDs.contains(song.id) == true
-    }
-
-    private var canSelectForDownload: Bool {
-        song.gatewayReference == nil
-            && !downloads.contains(songID: song.id)
-            && !downloads.isDownloading(songID: song.id)
-    }
-
     var body: some View {
         Button(action: primaryAction) {
-            ZStack(alignment: .bottomLeading) {
+            ZStack {
                 ArtworkImage(
                     url: song.album?.artworkURL,
-                    cornerRadius: 12,
-                    aspectRatio: aspectRatio
+                    cornerRadius: 0
                 )
 
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.76)],
-                    startPoint: .center,
-                    endPoint: .bottom
-                )
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(song.name)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
-
-                    Text(song.artistText)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.78))
-                        .lineLimit(1)
-                }
-                .foregroundStyle(.white)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                if isCurrentSong && !isSelectingDownloads {
+                if isCurrentSong {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.caption.weight(.bold))
+                        .font((isLarge ? Font.body : .caption).weight(.bold))
                         .foregroundStyle(.primary)
-                        .frame(width: 36, height: 36)
+                        .frame(
+                            width: isLarge ? 48 : 34,
+                            height: isLarge ? 48 : 34
+                        )
                         .background(.regularMaterial, in: Circle())
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-
-                if isSelectingDownloads {
-                    Image(
-                        systemName: isSelectedForDownload
-                            ? "checkmark.circle.fill"
-                            : "circle"
-                    )
-                    .font(.title2)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(canSelectForDownload ? .white : .white.opacity(0.42))
-                    .padding(10)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
                 }
             }
-            .aspectRatio(aspectRatio, contentMode: .fit)
-            .clipShape(.rect(cornerRadius: 12))
-            .contentShape(.rect(cornerRadius: 12))
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .disabled(isSelectingDownloads && !canSelectForDownload)
         .accessibilityLabel("\(song.name)，\(song.artistText)")
-        .accessibilityValue(accessibilityValue)
-    }
-
-    private var accessibilityValue: String {
-        if isSelectingDownloads {
-            if !canSelectForDownload {
-                return downloads.contains(songID: song.id) ? "已下载" : "正在下载"
-            }
-            return isSelectedForDownload ? "已选择" : "未选择"
-        }
-        return isCurrentSong ? "正在播放" : ""
+        .accessibilityValue(isCurrentSong ? "正在播放" : "")
     }
 
     private func primaryAction() {
-        if isSelectingDownloads {
-            guard canSelectForDownload else { return }
-            withAnimation(.easeInOut(duration: 0.15)) {
-                downloadSelection?.toggleSelection(songID: song.id)
-            }
-        } else if isCurrentSong {
+        if isCurrentSong {
             player.togglePlayback()
         } else {
             Task {

@@ -113,9 +113,6 @@ struct PlaylistDetailView: View {
                 loadedTrackOffset: loadedTrackOffset,
                 isLoadingMoreTracks: isLoadingMoreTracks,
                 loadMoreTracksError: loadMoreTracksError,
-                downloadSelection: AppFeatureAvailability.downloads
-                    ? downloadCoordinator
-                    : nil,
                 onRetry: { reloadToken += 1 },
                 onRefresh: { await load() },
                 onLoadMore: { await loadMoreTracks() }
