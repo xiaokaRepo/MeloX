@@ -1,0 +1,86 @@
+import AppKit
+import SwiftUI
+
+@main
+struct MeloXDesktopApp: App {
+    @State private var model = DesktopAppModel()
+
+    init() {
+        // MeloX 的各播放器窗口用途不同，不应被系统合并为标签页。
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
+    var body: some Scene {
+        WindowGroup("MeloX") {
+            DesktopRootView()
+                .environment(model)
+                .environment(model.screenAwakeCoordinator)
+                .preferredColorScheme(
+                    model.settings.appearance.preferredColorScheme
+                )
+                .frame(
+                    minWidth: DesktopMainWindowMetrics.minimumContentWidth,
+                    minHeight: DesktopMainWindowMetrics.minimumContentHeight
+                )
+        }
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified(showsTitle: false))
+        .windowToolbarLabelStyle(fixed: .iconOnly)
+        .defaultSize(width: 1_272, height: 600)
+        .commands {
+            DesktopCommands(model: model)
+        }
+
+        Window("迷你播放器", id: "mini-player") {
+            DesktopMiniPlayerWindow()
+                .environment(model)
+                .preferredColorScheme(model.settings.appearance.preferredColorScheme)
+        }
+        .windowStyle(.plain)
+        .windowResizability(.contentSize)
+        .windowBackgroundDragBehavior(.disabled)
+        .defaultSize(width: 320, height: 145)
+
+        Window("桌面歌词", id: "floating-lyrics") {
+            DesktopFloatingLyricsWindow()
+                .environment(model)
+                .preferredColorScheme(model.settings.appearance.preferredColorScheme)
+        }
+        .windowStyle(.plain)
+        .windowLevel(.floating)
+        .windowResizability(.contentMinSize)
+        .windowBackgroundDragBehavior(.enabled)
+        .defaultSize(
+            width: DesktopFloatingLyricsWindowMetrics.defaultWidth,
+            height: DesktopFloatingLyricsWindowMetrics.defaultHeight
+        )
+
+        Window("关于 MeloX", id: "about") {
+            DesktopAboutView()
+                .preferredColorScheme(model.settings.appearance.preferredColorScheme)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .windowBackgroundDragBehavior(.enabled)
+        .defaultSize(width: 600, height: 320)
+        .defaultPosition(.center)
+
+        Window("版权声明", id: "licenses") {
+            NavigationStack {
+                DesktopProjectLicensesView()
+            }
+            .preferredColorScheme(model.settings.appearance.preferredColorScheme)
+            .frame(width: 680, height: 680)
+        }
+        .windowResizability(.contentSize)
+        .defaultSize(width: 680, height: 680)
+
+        Settings {
+            DesktopSettingsView()
+                .environment(model)
+                .preferredColorScheme(model.settings.appearance.preferredColorScheme)
+        }
+        .windowResizability(.contentSize)
+        .defaultSize(width: 650, height: 650)
+    }
+}

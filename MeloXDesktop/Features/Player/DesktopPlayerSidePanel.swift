@@ -1,0 +1,143 @@
+import SwiftUI
+
+/// A trailing overlay that mounts its real page after the window finishes
+/// expanding, then removes it after the closing animation. In particular, the
+/// geometry-heavy lyrics view must not measure while the panel is offscreen or
+/// while AppKit is applying the new window frame.
+struct DesktopPlayerSidePanel: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var renderingSelection: DesktopInspector?
+
+    let selection: DesktopInspector
+    let isPresented: Bool
+
+    var body: some View {
+        surfacedPanel
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea(.container, edges: .top)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(selection.accessibilityTitle)
+            .task(id: renderingRequest) {
+                await updateRenderingSelection()
+            }
+    }
+
+    @ViewBuilder
+    private var surfacedPanel: some View {
+        if isPresented || renderingSelection != nil {
+            if #available(macOS 26.0, *) {
+                crossfadingContent
+                    .background {
+                        Color.clear
+                            .glassEffect(
+                                .regular,
+                                in: .rect(cornerRadius: 0)
+                            )
+                    }
+            } else {
+                crossfadingContent
+                    .background {
+                        Rectangle()
+                            .fill(.ultraThinMaterial)
+                    }
+            }
+        } else {
+            Color.clear
+        }
+    }
+
+    private var crossfadingContent: some View {
+        ZStack {
+            if renderingSelection != nil {
+                DesktopPlayerInspector(
+                    kind: selection,
+                    isActive: isPresented && renderingSelection == selection
+                )
+                .id(selection)
+                .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(
+            reduceMotion
+                ? nil
+                : DesktopMainWindowMetrics.presentationAnimation,
+            value: selection
+        )
+        .clipped()
+    }
+
+    private var renderingRequest: RenderingRequest {
+        RenderingRequest(
+            selection: selection,
+            isPresented: isPresented
+        )
+    }
+
+    private func updateRenderingSelection() async {
+        guard isPresented else {
+            if !reduceMotion {
+                do {
+                    try await Task.sleep(
+                        for: .seconds(
+                            DesktopMainWindowMetrics.presentationDuration
+                        )
+                    )
+                } catch {
+                    return
+                }
+            }
+            guard !Task.isCancelled else { return }
+            commitRenderingSelection(nil)
+            return
+        }
+
+        if renderingSelection != nil {
+            commitRenderingSelection(selection)
+            return
+        }
+
+        if reduceMotion {
+            await Task.yield()
+        } else {
+            do {
+                try await Task.sleep(
+                    for: .seconds(
+                        DesktopMainWindowMetrics.presentationDuration
+                    )
+                )
+            } catch {
+                return
+            }
+        }
+        guard !Task.isCancelled else { return }
+        commitRenderingSelection(selection)
+    }
+
+    private func commitRenderingSelection(
+        _ selection: DesktopInspector?
+    ) {
+        guard renderingSelection != selection else { return }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            renderingSelection = selection
+        }
+    }
+}
+
+private struct RenderingRequest: Hashable {
+    let selection: DesktopInspector
+    let isPresented: Bool
+}
+
+private extension DesktopInspector {
+    var accessibilityTitle: String {
+        switch self {
+        case .lyrics:
+            "歌词"
+        case .queue:
+            "播放列表"
+        }
+    }
+}

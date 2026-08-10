@@ -19,11 +19,18 @@ final class AudioPlaybackItemFactory {
         preferredForwardBufferDuration: TimeInterval,
         autoMixEqualizerState:
             SharedAutoMixEqualizerState
-    ) async -> AVPlayerItem {
-        let options: [String: Any]? = source.httpHeaders.isEmpty
-            ? nil
-            : ["AVURLAssetHTTPHeaderFieldsKey": source.httpHeaders]
-        let asset = AVURLAsset(url: source.url, options: options)
+    ) async -> PreparedAudioPlaybackItem {
+        var assetOptions: [String: Any] = [
+            AVURLAssetPreferPreciseDurationAndTimingKey: true
+        ]
+        if !source.httpHeaders.isEmpty {
+            assetOptions["AVURLAssetHTTPHeaderFieldsKey"] =
+                source.httpHeaders
+        }
+        let asset = AVURLAsset(
+            url: source.url,
+            options: assetOptions
+        )
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration =
             max(
@@ -31,10 +38,14 @@ final class AudioPlaybackItemFactory {
                 source.preferredForwardBufferDuration
             )
         item.allowedAudioSpatializationFormats = .multichannel
+        var audioTrackTimeRange: CMTimeRange?
         do {
             if let audioTrack = try await asset.loadTracks(
                 withMediaType: .audio
             ).first {
+                audioTrackTimeRange = try? await audioTrack.load(
+                    .timeRange
+                )
                 item.audioMix =
                     equalizerProcessor.makeAudioMix(
                         for: audioTrack,
@@ -45,7 +56,12 @@ final class AudioPlaybackItemFactory {
         } catch {
             // AVPlayerItem reports an actionable error if playback fails.
         }
-        return item
+        return PreparedAudioPlaybackItem(
+            item: item,
+            timeline: AudioPlaybackMediaTimeline(
+                audioTrackTimeRange: audioTrackTimeRange
+            )
+        )
     }
 
     func updateEqualizer(
