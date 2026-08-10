@@ -8,6 +8,14 @@ on:
     tags:
       - "v*"
 
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "要构建的分支"
+        required: true
+        default: "codex/gateway-priority-assets-lyrics"
+        type: string
+
 permissions:
   contents: read
 
@@ -22,14 +30,17 @@ jobs:
   select_run:
     name: Avoid duplicate branch and tag builds
     runs-on: ubuntu-latest
+
     outputs:
       should_build: ${{ steps.decision.outputs.should_build }}
 
     steps:
-      - name: Checkout branch push
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      # 手动运行时 checkout 用户指定的分支。
+      # push / tag 运行时 checkout 当前触发 ref。
+      - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.branch || github.ref }}
           fetch-depth: 0
 
       - name: Select build run
@@ -39,8 +50,12 @@ jobs:
           set -euo pipefail
 
           SHOULD_BUILD=true
+
+          # 只有 main 分支 push 需要检查是否已经存在对应 tag。
+          # codex/* 分支直接构建。
           if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == "refs/heads/main" ]]; then
             MATCHING_TAG="$(git tag --points-at "${GITHUB_SHA}" --list 'v*')"
+
             if [[ -n "${MATCHING_TAG}" ]]; then
               SHOULD_BUILD=false
               echo "跳过已由标签构建覆盖的 main 分支提交：${MATCHING_TAG}"
@@ -49,18 +64,43 @@ jobs:
 
           echo "should_build=${SHOULD_BUILD}" >> "${GITHUB_OUTPUT}"
 
+
   build:
     name: Build unsigned iOS IPA
+
     needs: select_run
+
     if: needs.select_run.outputs.should_build == 'true'
+
     runs-on: macos-26
+
     timeout-minutes: 60
 
     steps:
+      # 关键：
+      # workflow_dispatch 使用 inputs.branch
+      # push/tag 使用 github.ref
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.branch || github.ref }}
           fetch-depth: 0
+
+      - name: Show build ref
+        shell: bash
+        run: |
+          echo "========================================"
+          echo "Build information"
+          echo "========================================"
+          echo "Event:       ${GITHUB_EVENT_NAME}"
+          echo "Ref:         ${GITHUB_REF}"
+          echo "Ref name:    ${GITHUB_REF_NAME}"
+          echo "SHA:         ${GITHUB_SHA}"
+          echo "========================================"
+
+          git branch --show-current || true
+          git log -1 --oneline
+
 
       - name: Select Xcode
         shell: bash
@@ -68,7 +108,12 @@ jobs:
           set -euo pipefail
 
           XCODE_APP=""
-          for candidate in /Applications/Xcode_26.5.app /Applications/Xcode_26.5.0.app /Applications/Xcode.app; do
+
+          for candidate in \
+            /Applications/Xcode_26.5.app \
+            /Applications/Xcode_26.5.0.app \
+            /Applications/Xcode.app
+          do
             if [[ -d "${candidate}" ]]; then
               XCODE_APP="${candidate}"
               break
@@ -80,52 +125,78 @@ jobs:
             exit 1
           fi
 
+          echo "使用 Xcode: ${XCODE_APP}"
+
           sudo xcode-select -s "${XCODE_APP}/Contents/Developer"
+
           xcodebuild -version
           xcodebuild -showsdks
 
+
       - name: Resolve previous release
         id: release_range
+
         if: startsWith(github.ref, 'refs/tags/v')
+
         shell: bash
+
         env:
           GH_TOKEN: ${{ github.token }}
+
         run: |
           set -euo pipefail
 
           RELEASE_TAGS="$(
-            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
               --jq '.[] | select(.draft == false) | .tag_name'
           )"
+
           PREVIOUS_TAG="$(
             awk -v current="${GITHUB_REF_NAME}" '$0 != current { print; exit }' <<< "${RELEASE_TAGS}"
           )"
+
           echo "previous_tag=${PREVIOUS_TAG}" >> "${GITHUB_OUTPUT}"
+
 
       - name: Build unsigned IPA
         env:
           RELEASE_NOTES_CURRENT_REF: ${{ github.sha }}
           RELEASE_NOTES_PREVIOUS_REF: ${{ steps.release_range.outputs.previous_tag }}
-        run: bash build_ios_unsigned.sh
+
+        run: |
+          bash build_ios_unsigned.sh
+
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v7
+
         with:
           name: MeloX-iOS-unsigned-${{ github.run_number }}
+
           path: |
             build/MeloX-iOS-unsigned.ipa
             build/ReleaseNotes.json
             build/ReleaseNotes.md
+
           if-no-files-found: error
+
           retention-days: 14
+
 
   release:
     name: Create GitHub Release
+
     needs:
       - select_run
       - build
-    if: startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success'
+
+    if: >
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.build.result == 'success'
+
     runs-on: ubuntu-latest
+
     permissions:
       contents: write
 
@@ -133,37 +204,50 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.ref }}
           fetch-depth: 0
+
 
       - name: Download unsigned IPA
         uses: actions/download-artifact@v8
+
         with:
           name: MeloX-iOS-unsigned-${{ github.run_number }}
           path: release-assets
 
+
       - name: Generate release metadata
         shell: bash
+
         run: |
           set -euo pipefail
 
           TAG_NAME="${GITHUB_REF_NAME}"
+
           RELEASE_METADATA_PATH="release-assets/ReleaseNotes.json"
           RELEASE_NOTES_PATH="RELEASE_NOTES.md"
           BUNDLED_RELEASE_NOTES_PATH="release-assets/ReleaseNotes.md"
+
           if [[ ! -f "${RELEASE_METADATA_PATH}" ]]; then
             echo "::error::构建产物中缺少 ReleaseNotes.json"
             exit 1
           fi
+
           if [[ ! -s "${RELEASE_NOTES_PATH}" || ! -s "${BUNDLED_RELEASE_NOTES_PATH}" ]]; then
             echo "::error::项目或构建产物中缺少 ReleaseNotes.md"
             exit 1
           fi
-          if ! cmp --silent "${RELEASE_NOTES_PATH}" "${BUNDLED_RELEASE_NOTES_PATH}"; then
+
+          if ! cmp --silent \
+            "${RELEASE_NOTES_PATH}" \
+            "${BUNDLED_RELEASE_NOTES_PATH}"
+          then
             echo "::error::构建产物中的更新日志与项目根目录不一致"
             exit 1
           fi
 
           BUNDLED_VERSION="$(jq -r '.version' "${RELEASE_METADATA_PATH}")"
+
           if [[ "${TAG_NAME#v}" != "${BUNDLED_VERSION#v}" ]]; then
             echo "::error::标签 ${TAG_NAME} 与 App 版本 ${BUNDLED_VERSION} 不一致"
             exit 1
@@ -193,26 +277,36 @@ jobs:
           - 构建编号：\`${GITHUB_RUN_NUMBER}\`
 
           ## 更新内容
-
           EOF
 
           cat release_notes.md >> release_body.md
 
+
       - name: Create release
         uses: softprops/action-gh-release@v3
+
         with:
           name: MeloX ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           body_path: release_body.md
+
           draft: false
           prerelease: false
+
           fail_on_unmatched_files: true
-          files: release-assets/MeloX-iOS-unsigned.ipa
+
+          files: |
+            release-assets/MeloX-iOS-unsigned.ipa
+
 
       - name: Upload release metadata
         uses: actions/upload-artifact@v7
+
         with:
           name: MeloX-release-metadata-${{ github.run_number }}
+
           path: release_notes.md
+
           if-no-files-found: error
+
           retention-days: 14
