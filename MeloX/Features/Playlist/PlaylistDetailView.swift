@@ -19,6 +19,7 @@ struct PlaylistDetailView: View {
     @State private var artworkPalette: ArtworkDetailPalette?
     @State private var blurredBackdropImage: CGImage?
     @State private var searchQuery = ""
+    @State private var isPosterWallPresented = false
     @State private var loadedTrackOffset = 0
     @State private var isLoadingMoreTracks = false
     @State private var loadMoreTracksError: String?
@@ -88,6 +89,7 @@ struct PlaylistDetailView: View {
                downloadCoordinator.isSelecting {
                 downloadSelectionToolbar
             } else {
+                posterWallToolbar
                 playlistToolbar(for: displayedPlaylist)
             }
         }
@@ -99,6 +101,26 @@ struct PlaylistDetailView: View {
             for: .tabBar
         )
         .environment(\.colorScheme, interfaceColorScheme)
+        .fullScreenCover(isPresented: $isPosterWallPresented) {
+            MusicCollectionPosterWallScreen(
+                playlist: displayedPlaylist,
+                palette: resolvedPalette,
+                blurredBackdropImage: blurredBackdropImage,
+                tracks: filteredTracks,
+                isLoading: isInitialLoading,
+                failureMessage: initialFailureMessage,
+                hasMoreTracks: hasMoreTracks,
+                loadedTrackOffset: loadedTrackOffset,
+                isLoadingMoreTracks: isLoadingMoreTracks,
+                loadMoreTracksError: loadMoreTracksError,
+                downloadSelection: AppFeatureAvailability.downloads
+                    ? downloadCoordinator
+                    : nil,
+                onRetry: { reloadToken += 1 },
+                onRefresh: { await load() },
+                onLoadMore: { await loadMoreTracks() }
+            )
+        }
         .onAppear {
             updateTabViewBottomAccessoryVisibility()
         }
@@ -221,6 +243,10 @@ struct PlaylistDetailView: View {
         return message
     }
 
+    private var filteredTracks: [Song] {
+        filterMusicCollectionTracks(displayedPlaylist.tracks, query: searchQuery)
+    }
+
     private var hasMoreTracks: Bool {
         guard case .loaded = phase,
               let playlist,
@@ -300,6 +326,28 @@ struct PlaylistDetailView: View {
             .accessibilityLabel("更多")
         }
         .sharedBackgroundVisibility(.visible)
+    }
+
+    @ToolbarContentBuilder
+    private var posterWallToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                if accessibilityReduceMotion {
+                    isPosterWallPresented = true
+                } else {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isPosterWallPresented = true
+                    }
+                }
+            } label: {
+                Image(
+                    systemName: MusicCollectionPresentationMode
+                        .posterWall
+                        .systemImage
+                )
+            }
+            .accessibilityLabel("打开海报墙模式")
+        }
     }
 
     @ToolbarContentBuilder

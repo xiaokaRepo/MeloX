@@ -1,5 +1,30 @@
 import SwiftUI
 
+enum MusicCollectionPresentationMode: String, CaseIterable, Identifiable {
+    case list
+    case posterWall
+
+    var id: Self { self }
+
+    var systemImage: String {
+        switch self {
+        case .list:
+            "square.grid.2x2"
+        case .posterWall:
+            "list.bullet"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .list:
+            "列表"
+        case .posterWall:
+            "海报墙"
+        }
+    }
+}
+
 struct PlaylistDetailContent: View {
     let playlist: Playlist
     let toplistSummary: Playlist?
@@ -96,6 +121,322 @@ struct PlaylistDetailContent: View {
 
     private var filteredTracks: [Song] {
         filterMusicCollectionTracks(playlist.tracks, query: searchQuery)
+    }
+}
+
+private struct MusicCollectionPosterWallItem: Identifiable {
+    let song: Song
+    let aspectRatio: CGFloat
+
+    var id: Int { song.id }
+}
+
+struct MusicCollectionPosterWallScreen: View {
+    let playlist: Playlist
+    let palette: ArtworkDetailPalette
+    let blurredBackdropImage: CGImage?
+    let tracks: [Song]
+    let isLoading: Bool
+    let failureMessage: String?
+    let hasMoreTracks: Bool
+    let loadedTrackOffset: Int
+    let isLoadingMoreTracks: Bool
+    let loadMoreTracksError: String?
+    let downloadSelection: MusicCollectionDownloadCoordinator?
+    let onRetry: () -> Void
+    let onRefresh: () async -> Void
+    let onLoadMore: () async -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(PlayerStore.self) private var player
+    @Namespace private var miniPlayerNamespace
+
+    var body: some View {
+        ZStack {
+            MusicCollectionArtworkBackdrop(
+                blurredArtworkImage: blurredBackdropImage,
+                palette: palette
+            )
+
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    posterWallHeader
+
+                    MusicCollectionPosterWallContent(
+                        tracks: tracks,
+                        sourceID: playlist.id,
+                        loadingTitle: "正在载入\(playlist.isOfficialToplist ? "排行榜" : "歌单")",
+                        isLoading: isLoading,
+                        failureMessage: failureMessage,
+                        hasMoreTracks: hasMoreTracks,
+                        loadedTrackOffset: loadedTrackOffset,
+                        isLoadingMoreTracks: isLoadingMoreTracks,
+                        loadMoreTracksError: loadMoreTracksError,
+                        downloadSelection: downloadSelection,
+                        onRetry: onRetry,
+                        onLoadMore: onLoadMore
+                    )
+                }
+                .padding(.bottom, 18)
+            }
+            .scrollIndicators(.hidden)
+            .refreshable {
+                await onRefresh()
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if player.currentSong != nil {
+                MiniPlayerView(
+                    artworkTransitionID: "poster-wall-now-playing",
+                    artworkTransitionNamespace: miniPlayerNamespace,
+                    onExpand: { dismiss() }
+                )
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+            }
+        }
+        .preferredColorScheme(palette.colorScheme)
+        .presentationBackground(.clear)
+    }
+
+    private var posterWallHeader: some View {
+        HStack(spacing: 12) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 38, height: 38)
+                    .background(.regularMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("关闭海报墙")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(playlist.name)
+                    .font(.headline.weight(.semibold))
+                    .lineLimit(1)
+                Text(MusicCollectionPresentationMode.posterWall.title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: MusicCollectionPresentationMode.list.systemImage)
+                    .font(.body.weight(.semibold))
+                    .frame(width: 38, height: 38)
+                    .background(.regularMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("返回列表模式")
+        }
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 16)
+    }
+}
+
+struct MusicCollectionPosterWallContent: View {
+    let tracks: [Song]
+    let sourceID: Int
+    let loadingTitle: String
+    let isLoading: Bool
+    let failureMessage: String?
+    let hasMoreTracks: Bool
+    let loadedTrackOffset: Int
+    let isLoadingMoreTracks: Bool
+    let loadMoreTracksError: String?
+    let downloadSelection: MusicCollectionDownloadCoordinator?
+    let onRetry: () -> Void
+    let onLoadMore: () async -> Void
+
+    private var columns: [[MusicCollectionPosterWallItem]] {
+        var result = [[], []] as [[MusicCollectionPosterWallItem]]
+        var columnHeights = [CGFloat](repeating: 0, count: 2)
+        let aspectRatios: [CGFloat] = [1.0, 0.78, 1.16, 0.88, 1.04, 0.72]
+
+        for (index, song) in tracks.enumerated() {
+            let aspectRatio = aspectRatios[index % aspectRatios.count]
+            let columnIndex = columnHeights[0] <= columnHeights[1] ? 0 : 1
+            result[columnIndex].append(
+                MusicCollectionPosterWallItem(
+                    song: song,
+                    aspectRatio: aspectRatio
+                )
+            )
+            columnHeights[columnIndex] += (1.0 / aspectRatio) + 0.08
+        }
+
+        return result
+    }
+
+    var body: some View {
+        if isLoading {
+            ProgressView(loadingTitle)
+                .tint(.primary)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 180)
+        } else if let failureMessage {
+            ConnectionUnavailableView(
+                message: failureMessage,
+                retry: onRetry
+            )
+            .frame(maxWidth: .infinity, minHeight: 220)
+        } else if tracks.isEmpty {
+            ContentUnavailableView("暂无歌曲", systemImage: "square.grid.2x2")
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, minHeight: 180)
+        } else {
+            VStack(spacing: 16) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(columns.indices, id: \.self) { columnIndex in
+                        LazyVStack(spacing: 12) {
+                            ForEach(columns[columnIndex]) { item in
+                                MusicCollectionPosterCard(
+                                    song: item.song,
+                                    tracks: tracks,
+                                    sourceID: sourceID,
+                                    downloadSelection: downloadSelection,
+                                    aspectRatio: item.aspectRatio
+                                )
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .top)
+                    }
+                }
+                .padding(.horizontal, 16)
+
+                if hasMoreTracks {
+                    MusicCollectionPaginationFooter(
+                        isLoading: isLoadingMoreTracks,
+                        failureMessage: loadMoreTracksError,
+                        loadToken: loadedTrackOffset,
+                        action: onLoadMore
+                    )
+                }
+            }
+        }
+    }
+}
+
+private struct MusicCollectionPosterCard: View {
+    let song: Song
+    let tracks: [Song]
+    let sourceID: Int
+    let downloadSelection: MusicCollectionDownloadCoordinator?
+    let aspectRatio: CGFloat
+
+    @Environment(PlayerStore.self) private var player
+    @Environment(DownloadStore.self) private var downloads
+
+    private var isCurrentSong: Bool {
+        player.currentSong?.id == song.id
+    }
+
+    private var isSelectingDownloads: Bool {
+        downloadSelection?.isSelecting == true
+    }
+
+    private var isSelectedForDownload: Bool {
+        downloadSelection?.selectedSongIDs.contains(song.id) == true
+    }
+
+    private var canSelectForDownload: Bool {
+        song.gatewayReference == nil
+            && !downloads.contains(songID: song.id)
+            && !downloads.isDownloading(songID: song.id)
+    }
+
+    var body: some View {
+        Button(action: primaryAction) {
+            ZStack(alignment: .bottomLeading) {
+                ArtworkImage(
+                    url: song.album?.artworkURL,
+                    cornerRadius: 12,
+                    aspectRatio: aspectRatio
+                )
+
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.76)],
+                    startPoint: .center,
+                    endPoint: .bottom
+                )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(song.name)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
+
+                    Text(song.artistText)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(.white)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if isCurrentSong && !isSelectingDownloads {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 36, height: 36)
+                        .background(.regularMaterial, in: Circle())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+
+                if isSelectingDownloads {
+                    Image(
+                        systemName: isSelectedForDownload
+                            ? "checkmark.circle.fill"
+                            : "circle"
+                    )
+                    .font(.title2)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(canSelectForDownload ? .white : .white.opacity(0.42))
+                    .padding(10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                }
+            }
+            .aspectRatio(aspectRatio, contentMode: .fit)
+            .clipShape(.rect(cornerRadius: 12))
+            .contentShape(.rect(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .disabled(isSelectingDownloads && !canSelectForDownload)
+        .accessibilityLabel("\(song.name)，\(song.artistText)")
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var accessibilityValue: String {
+        if isSelectingDownloads {
+            if !canSelectForDownload {
+                return downloads.contains(songID: song.id) ? "已下载" : "正在下载"
+            }
+            return isSelectedForDownload ? "已选择" : "未选择"
+        }
+        return isCurrentSong ? "正在播放" : ""
+    }
+
+    private func primaryAction() {
+        if isSelectingDownloads {
+            guard canSelectForDownload else { return }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                downloadSelection?.toggleSelection(songID: song.id)
+            }
+        } else if isCurrentSong {
+            player.togglePlayback()
+        } else {
+            Task {
+                await player.play(song, in: tracks, sourceID: sourceID)
+            }
+        }
     }
 }
 
