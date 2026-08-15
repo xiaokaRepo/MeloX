@@ -141,6 +141,8 @@ struct SettingsView: View {
             GeneralSettingsView()
         case .tabLayout:
             TabLayoutSettingsView()
+        case .contentFeatures:
+            ContentFeatureSettingsView()
         case .content:
             ContentSettingsView()
         case .storage:

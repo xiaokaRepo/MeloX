@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Observation
 
 enum SearchKind: Int, CaseIterable, Identifiable {
@@ -54,11 +55,31 @@ final class NeteaseAPI {
     private let settings: AppSettings
 
     @ObservationIgnored
+    private let pathMonitor = NWPathMonitor()
+
+    private(set) var isCellularData = false
+
+    @ObservationIgnored
     let client: NeteaseDirectClient
+
+    private var playbackQuality: MusicQuality {
+        isCellularData ? settings.cellularQuality : settings.quality
+    }
 
     init(settings: AppSettings, session: URLSession = .shared) {
         self.settings = settings
         client = NeteaseDirectClient(settings: settings, session: session)
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let isCellular = path.usesInterfaceType(.cellular)
+            Task { @MainActor [weak self] in
+                self?.isCellularData = isCellular
+            }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "MeloX.NetworkMonitor"))
+    }
+
+    deinit {
+        pathMonitor.cancel()
     }
 
     func recommendedPlaylists(limit: Int = 10) async throws -> [Playlist] {
@@ -110,37 +131,33 @@ final class NeteaseAPI {
 
     func playlist(
         id: Int,
-        trackLimit: Int = 100
+        trackLimit: Int? = 100
     ) async throws -> Playlist {
-        let requestedTrackCount = min(max(trackLimit, 0), 100)
+        let embeddedTrackCount = min(max(trackLimit ?? 100, 0), 100)
         let response: PlaylistDetailResponse = try await client.eapi(
             "/api/v6/playlist/detail",
-            data: ["id": id, "n": requestedTrackCount, "s": 8]
+            data: ["id": id, "n": embeddedTrackCount, "s": 8]
         )
         var playlist = response.playlist
         guard !playlist.trackIDs.isEmpty else {
-            if playlist.tracks.count > requestedTrackCount {
+            if let trackLimit,
+               playlist.tracks.count > trackLimit {
                 playlist.tracks = Array(
-                    playlist.tracks.prefix(requestedTrackCount)
+                    playlist.tracks.prefix(max(trackLimit, 0))
                 )
             }
             return playlist
         }
 
-        let pageIDs = playlist.trackIDs
-            .prefix(requestedTrackCount)
-            .map(\.id)
-        var detailsByID: [Int: Song] = [:]
-        for song in playlist.tracks {
-            detailsByID[song.id] = song
+        let requestedTrackIDs = if let trackLimit {
+            Array(playlist.trackIDs.prefix(max(trackLimit, 0)).map(\.id))
+        } else {
+            playlist.trackIDs.map(\.id)
         }
-        let missingIDs = pageIDs.filter { detailsByID[$0] == nil }
-        if !missingIDs.isEmpty {
-            for song in try await songDetails(ids: missingIDs) {
-                detailsByID[song.id] = song
-            }
-        }
-        playlist.tracks = pageIDs.compactMap { detailsByID[$0] }
+        playlist.tracks = try await songDetailsCollection(
+            ids: requestedTrackIDs,
+            prefetched: playlist.tracks
+        )
         return playlist
     }
 
@@ -200,6 +217,31 @@ final class NeteaseAPI {
             )
         }
         return response.songs
+    }
+
+    func songDetailsCollection(
+        ids: [Int],
+        prefetched: [Song] = []
+    ) async throws -> [Song] {
+        guard !ids.isEmpty else { return [] }
+
+        var detailsByID = Dictionary(
+            prefetched.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let missingIDs = ids.filter { detailsByID[$0] == nil }
+
+        for start in stride(from: 0, to: missingIDs.count, by: 100) {
+            try Task.checkCancellation()
+            let end = min(start + 100, missingIDs.count)
+            for song in try await songDetails(
+                ids: Array(missingIDs[start..<end])
+            ) {
+                detailsByID[song.id] = song
+            }
+        }
+
+        return ids.compactMap { detailsByID[$0] }
     }
 
     func audioMatches(
@@ -321,7 +363,7 @@ final class NeteaseAPI {
     func playbackSource(id: Int) async throws -> PlaybackSource {
         try await playbackSource(
             id: id,
-            quality: settings.quality,
+            quality: playbackQuality,
             availability: .unknown
         )
     }
@@ -329,7 +371,7 @@ final class NeteaseAPI {
     func playbackSource(for song: Song) async throws -> PlaybackSource {
         try await playbackSource(
             id: song.id,
-            quality: settings.quality,
+            quality: playbackQuality,
             availability: song.audioAvailability
         )
     }
@@ -518,6 +560,18 @@ final class NeteaseAPI {
     }
 
     func lyrics(id: Int) async throws -> [LyricLine] {
+        let payload = try await neteaseLyrics(id: id)
+        return LyricParser.parse(
+            yrc: payload.yrc ?? "",
+            lrc: payload.lrc ?? "",
+            translatedYRC: payload.translatedYRC ?? "",
+            translatedLRC: payload.translatedLRC ?? "",
+            romanizedYRC: payload.romanizedYRC ?? "",
+            romanizedLRC: payload.romanizedLRC ?? ""
+        )
+    }
+
+    func neteaseLyrics(id: Int) async throws -> NeteaseLyricPayload {
         do {
             let response: LyricResponse = try await client.eapi(
                 "/api/song/lyric/v1",
@@ -533,13 +587,14 @@ final class NeteaseAPI {
                     "yrv": 0,
                 ]
             )
-            return LyricParser.parse(
-                yrc: response.yrc?.lyric ?? "",
-                lrc: response.lrc?.lyric ?? "",
-                translatedYRC: response.ytlrc?.lyric ?? "",
-                translatedLRC: response.tlyric?.lyric ?? "",
-                romanizedYRC: response.yromalrc?.lyric ?? "",
-                romanizedLRC: response.romalrc?.lyric ?? ""
+            return NeteaseLyricPayload(
+                yrc: response.yrc?.lyric,
+                lrc: response.lrc?.lyric,
+                translatedYRC: response.ytlrc?.lyric,
+                translatedLRC: response.tlyric?.lyric,
+                romanizedYRC: response.yromalrc?.lyric,
+                romanizedLRC: response.romalrc?.lyric,
+                isPureMusic: response.pureMusic == true
             )
         } catch is CancellationError {
             throw CancellationError()
@@ -550,11 +605,14 @@ final class NeteaseAPI {
                 "/api/song/lyric",
                 data: ["id": id, "tv": -1, "lv": -1, "rv": -1, "kv": -1, "_nmclfl": 1]
             )
-            return LyricParser.parse(
-                yrc: "",
-                lrc: response.lrc?.lyric ?? "",
-                translatedLRC: response.tlyric?.lyric ?? "",
-                romanizedLRC: response.romalrc?.lyric ?? ""
+            return NeteaseLyricPayload(
+                yrc: nil,
+                lrc: response.lrc?.lyric,
+                translatedYRC: nil,
+                translatedLRC: response.tlyric?.lyric,
+                romanizedYRC: nil,
+                romanizedLRC: response.romalrc?.lyric,
+                isPureMusic: response.pureMusic == true
             )
         }
     }

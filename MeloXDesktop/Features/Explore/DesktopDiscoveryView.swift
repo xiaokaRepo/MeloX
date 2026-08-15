@@ -82,7 +82,7 @@ struct DesktopDiscoveryView: View {
         Task {
             guard let detail = try? await model.api.playlist(
                 id: playlist.id,
-                trackLimit: 100
+                trackLimit: nil
             ) else { return }
             await model.player.playAll(detail.tracks, sourceID: detail.id)
         }
@@ -105,7 +105,7 @@ struct DesktopRadioView: View {
                 if !model.home.podcastCategories.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         DesktopSectionHeader(title: "浏览类别")
-                        ScrollView(.horizontal) {
+                        ScrollView(.horizontal, showsIndicators: false) {
                             LazyHStack(spacing: 10) {
                                 ForEach(model.home.podcastCategories) { category in
                                     Button {
@@ -131,7 +131,6 @@ struct DesktopRadioView: View {
                                 }
                             }
                         }
-                        .scrollIndicators(.hidden)
                     }
                 }
 

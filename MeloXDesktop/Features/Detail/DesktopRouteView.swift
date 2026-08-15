@@ -54,6 +54,7 @@ struct DesktopCollectionHeader: View {
     var artworkSystemImage: String?
     var artworkTint: Color = .red
     var supplementaryAction: DesktopCollectionSupplementaryAction?
+    var onPlayAll: ((Bool) async -> Void)?
 
     @Environment(DesktopAppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -159,17 +160,27 @@ struct DesktopCollectionHeader: View {
     private var actions: some View {
         HStack(spacing: 12) {
             Button("播放", systemImage: "play.fill") {
-                Task { await model.player.playAll(songs, sourceID: sourceID) }
+                Task {
+                    if let onPlayAll {
+                        await onPlayAll(false)
+                    } else {
+                        await model.player.playAll(songs, sourceID: sourceID)
+                    }
+                }
             }
             .buttonStyle(.borderedProminent)
             .disabled(songs.isEmpty)
 
             Button("随机播放", systemImage: "shuffle") {
                 Task {
-                    await model.player.playAll(
-                        songs.shuffled(),
-                        sourceID: sourceID
-                    )
+                    if let onPlayAll {
+                        await onPlayAll(true)
+                    } else {
+                        await model.player.playAll(
+                            songs.shuffled(),
+                            sourceID: sourceID
+                        )
+                    }
                 }
             }
             .buttonStyle(.bordered)
@@ -204,26 +215,31 @@ struct DesktopCollectionHeader: View {
                 .help(isFavorite ? "取消收藏" : "收藏")
             }
 
-            Menu {
-                Button("下载全部", systemImage: "arrow.down.circle") {
-                    model.downloads.start(
-                        songs,
-                        quality: model.settings.quality
-                    )
-                }
-                .disabled(songs.isEmpty)
-
-                if let shareURL {
-                    ShareLink(item: shareURL) {
-                        Label("分享", systemImage: "square.and.arrow.up")
+            if model.settings.isContentFeatureEnabled(.downloads)
+                || shareURL != nil {
+                Menu {
+                    if model.settings.isContentFeatureEnabled(.downloads) {
+                        Button("下载全部", systemImage: "arrow.down.circle") {
+                            model.downloads.start(
+                                songs,
+                                quality: model.settings.quality
+                            )
+                        }
+                        .disabled(songs.isEmpty)
                     }
+
+                    if let shareURL {
+                        ShareLink(item: shareURL) {
+                            Label("分享", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
                 }
-            } label: {
-                Image(systemName: "ellipsis")
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("更多")
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help("更多")
         }
     }
 }
@@ -234,8 +250,15 @@ struct DesktopCollectionTrackList: View {
     var showsAlbumColumn = true
     var usesTrackNumbers = false
     var groupsByDisc = false
+    var loadMoreToken: Int?
+    var onLoadMore: (() async -> Void)?
 
     var body: some View {
+        let entries = makeEntries()
+        let discGroups = groupsByDisc
+            ? makeDiscGroups(from: entries)
+            : []
+
         LazyVStack(spacing: 1) {
             if groupsByDisc, discGroups.count > 1 {
                 ForEach(discGroups) { group in
@@ -251,19 +274,20 @@ struct DesktopCollectionTrackList: View {
                         .padding(.bottom, 5)
 
                     ForEach(group.entries) { entry in
-                        row(entry)
+                        row(entry, isLast: entry.id == entries.last?.id)
                     }
                 }
             } else {
                 ForEach(entries) { entry in
-                    row(entry)
+                    row(entry, isLast: entry.id == entries.last?.id)
                 }
             }
         }
     }
 
-    private func row(_ entry: TrackEntry) -> some View {
-        DesktopTrackRow(
+    @ViewBuilder
+    private func row(_ entry: TrackEntry, isLast: Bool) -> some View {
+        let row = DesktopTrackRow(
             song: entry.song,
             index: entry.index,
             songs: songs,
@@ -273,15 +297,25 @@ struct DesktopCollectionTrackList: View {
                 ? String(entry.song.trackNumber ?? entry.index + 1)
                 : nil
         )
+
+        if isLast, let loadMoreToken, let onLoadMore {
+            row.task(id: loadMoreToken) {
+                await onLoadMore()
+            }
+        } else {
+            row
+        }
     }
 
-    private var entries: [TrackEntry] {
+    private func makeEntries() -> [TrackEntry] {
         Array(songs.enumerated()).map {
             TrackEntry(index: $0.offset, song: $0.element)
         }
     }
 
-    private var discGroups: [DiscGroup] {
+    private func makeDiscGroups(
+        from entries: [TrackEntry]
+    ) -> [DiscGroup] {
         var order: [String] = []
         var values: [String: [TrackEntry]] = [:]
 
@@ -330,40 +364,9 @@ struct DesktopDetailLoadingView: View {
     let message: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 34) {
-            HStack(alignment: .bottom, spacing: 34) {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(.quaternary)
-                    .frame(width: 278, height: 278)
-
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach([72.0, 310.0, 190.0, 250.0], id: \.self) { width in
-                        Capsule()
-                            .fill(.quaternary)
-                            .frame(width: width, height: width == 310 ? 30 : 12)
-                    }
-                }
-                Spacer()
-            }
-
-            Divider()
-
-            VStack(spacing: 12) {
-                ForEach(0..<5, id: \.self) { _ in
-                    Capsule()
-                        .fill(.quaternary)
-                        .frame(height: 12)
-                }
-            }
-        }
-        .padding(42)
-        .redacted(reason: .placeholder)
-        .overlay {
-            ProgressView(message)
-                .padding(14)
-                .background(.regularMaterial, in: .capsule)
-        }
+        Color.clear
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .desktopLoadingStatus(message, isPresented: true)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(message)
     }

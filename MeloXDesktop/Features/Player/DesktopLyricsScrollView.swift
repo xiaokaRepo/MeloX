@@ -208,9 +208,7 @@ struct DesktopLyricsScrollView: View {
         GeometryReader { geometry in
             Group {
                 if model.lyrics.isLoading {
-                    Text("正在载入歌词…")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(foregroundColor.opacity(0.58))
+                    Color.clear
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if model.lyrics.lyrics.isEmpty {
                     ContentUnavailableView(
@@ -1322,7 +1320,7 @@ struct DesktopLyricsScrollView: View {
         )
 
         let scrollView = ScrollViewReader { proxy in
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(
                     alignment: .leading,
                     spacing: lineSpacing
@@ -1364,7 +1362,6 @@ struct DesktopLyricsScrollView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .scrollTargetLayout()
             }
-            .scrollIndicators(compact ? .automatic : .hidden)
             .scrollClipDisabled(!compact)
             .defaultScrollAnchor(focusAnchor, for: .sizeChanges)
             .onScrollPhaseChange { _, newPhase in

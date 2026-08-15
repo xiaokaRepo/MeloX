@@ -143,7 +143,9 @@ struct ContentView: View {
             }
             .task(id: player.currentSong?.id) {
                 let song = player.currentSong
-                let lyricSong = song?.isPodcastProgram == true ? nil : song
+                let lyricSong = song?.isPodcastProgram == true
+                    ? nil
+                    : song
                 await lyrics.load(for: lyricSong)
                 guard !Task.isCancelled else { return }
                 player.setNowPlayingLyrics(lyrics.lyrics, for: lyricSong?.id)

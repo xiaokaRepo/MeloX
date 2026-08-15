@@ -180,6 +180,9 @@ final class AppSettings {
         static let lyricsLongPressToShare = "lyricsLongPressToShare"
         static let lyricsWordByWord = "lyricsWordByWord"
         static let lyricsPseudoWordByWord = "lyricsPseudoWordByWord"
+        static let lyricsDuetLayoutEnabled = "lyricsDuetLayoutEnabled"
+        static let lyricsAMLLSourceEnabled = "lyricsAMLLSourceEnabled"
+        static let lyricsQQMusicSourceEnabled = "lyricsQQMusicSourceEnabled"
         static let lyricsLiftMode = "lyricsLiftMode"
         static let lyricsHighlightGradientWidth =
             "lyricsHighlightGradientWidth"
@@ -494,7 +497,8 @@ final class AppSettings {
 
     var embeddedLibraryPages: [LibraryPage] {
         LibraryPage.availableCases.filter {
-            !separatedLibraryPages.contains($0)
+            isLibraryPageEnabled($0)
+                && !separatedLibraryPages.contains($0)
         }
     }
 
@@ -503,6 +507,7 @@ final class AppSettings {
             homeTabOrder,
             separatedLibraryPages: separatedLibraryPages
         )
+        .filter(isNavigationTabEnabled)
     }
 
     var visibleTabs: [AppTab] {
@@ -511,6 +516,7 @@ final class AppSettings {
             separatedLibraryPages: separatedLibraryPages,
             homeTabs: homeTabs
         )
+        .filter(isNavigationTabEnabled)
     }
 
     var launchTab: AppTab {
@@ -555,6 +561,7 @@ final class AppSettings {
         placement: AppPagePlacement
     ) {
         guard AppTab.configurablePages.contains(tab),
+              isNavigationTabEnabled(tab),
               tab.allowedPlacements.contains(placement) else {
             return
         }
@@ -602,18 +609,46 @@ final class AppSettings {
     }
 
     func setHomeTabOrder(_ tabs: [AppTab]) {
+        let disabledTabs = homeTabOrder.filter {
+            !isNavigationTabEnabled($0)
+        }
         homeTabOrder = Self.normalizedHomeTabOrder(
-            tabs,
+            tabs + disabledTabs,
             separatedLibraryPages: separatedLibraryPages
         )
     }
 
     func setVisibleTabOrder(_ tabs: [AppTab]) {
+        let disabledTabs = tabOrder.filter {
+            !isNavigationTabEnabled($0)
+        }
         tabOrder = Self.normalizedTabOrder(
-            tabs,
+            tabs + disabledTabs,
             separatedLibraryPages: separatedLibraryPages,
             homeTabs: homeTabs
         )
+    }
+
+    func isContentFeatureEnabled(_ feature: ContentFeature) -> Bool {
+        contentFeatures.isEnabled(feature)
+    }
+
+    func setContentFeature(
+        _ feature: ContentFeature,
+        isEnabled: Bool
+    ) {
+        contentFeatures.setEnabled(isEnabled, for: feature)
+        normalizeNavigationSelections()
+    }
+
+    func isNavigationTabEnabled(_ tab: AppTab) -> Bool {
+        guard let feature = tab.requiredContentFeature else { return true }
+        return isContentFeatureEnabled(feature)
+    }
+
+    func isLibraryPageEnabled(_ page: LibraryPage) -> Bool {
+        guard let feature = page.requiredContentFeature else { return true }
+        return isContentFeatureEnabled(feature)
     }
 
     func resetTabLayout() {
@@ -792,6 +827,33 @@ final class AppSettings {
 
     var lyricsPseudoWordByWord: Bool {
         didSet { defaults.set(lyricsPseudoWordByWord, forKey: Key.lyricsPseudoWordByWord) }
+    }
+
+    var lyricsDuetLayoutEnabled: Bool {
+        didSet {
+            defaults.set(
+                lyricsDuetLayoutEnabled,
+                forKey: Key.lyricsDuetLayoutEnabled
+            )
+        }
+    }
+
+    var lyricsAMLLSourceEnabled: Bool {
+        didSet {
+            defaults.set(
+                lyricsAMLLSourceEnabled,
+                forKey: Key.lyricsAMLLSourceEnabled
+            )
+        }
+    }
+
+    var lyricsQQMusicSourceEnabled: Bool {
+        didSet {
+            defaults.set(
+                lyricsQQMusicSourceEnabled,
+                forKey: Key.lyricsQQMusicSourceEnabled
+            )
+        }
     }
 
     var lyricsLiftMode: LyricsLiftMode {
@@ -1183,6 +1245,7 @@ final class AppSettings {
     let floatingLyrics: FloatingLyricsPreferences
     let lyricsNotifications: LyricsNotificationPreferences
     let songRecognition: SongRecognitionPreferences
+    let contentFeatures: ContentFeaturePreferences
 
     @ObservationIgnored
     private let defaults: UserDefaults
@@ -1198,6 +1261,7 @@ final class AppSettings {
             defaults: defaults
         )
         songRecognition = SongRecognitionPreferences(defaults: defaults)
+        contentFeatures = ContentFeaturePreferences(defaults: defaults)
         hasCompletedOnboarding = defaults.bool(
             forKey: Key.hasCompletedOnboarding
         )
@@ -1457,6 +1521,15 @@ final class AppSettings {
         ) as? Bool ?? true
         lyricsWordByWord = defaults.object(forKey: Key.lyricsWordByWord) as? Bool ?? true
         lyricsPseudoWordByWord = defaults.object(forKey: Key.lyricsPseudoWordByWord) as? Bool ?? false
+        lyricsDuetLayoutEnabled = defaults.object(
+            forKey: Key.lyricsDuetLayoutEnabled
+        ) as? Bool ?? true
+        lyricsAMLLSourceEnabled = defaults.object(
+            forKey: Key.lyricsAMLLSourceEnabled
+        ) as? Bool ?? true
+        lyricsQQMusicSourceEnabled = defaults.object(
+            forKey: Key.lyricsQQMusicSourceEnabled
+        ) as? Bool ?? true
         lyricsLiftMode = LyricsLiftMode(
             rawValue: defaults.string(forKey: Key.lyricsLiftMode) ?? ""
         ) ?? Self.defaultLyricsLiftMode
@@ -1944,6 +2017,9 @@ final class AppSettings {
         lyricsLongPressToShare = true
         lyricsWordByWord = true
         lyricsPseudoWordByWord = false
+        lyricsDuetLayoutEnabled = true
+        lyricsAMLLSourceEnabled = true
+        lyricsQQMusicSourceEnabled = true
         lyricsLiftMode = Self.defaultLyricsLiftMode
         lyricsHighlightGradientWidth =
             Self.defaultLyricsHighlightGradientWidth

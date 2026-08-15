@@ -6,6 +6,8 @@ struct DesktopLibraryView: View {
     let section: DesktopSection
 
     @State private var showsImporter = false
+    @State private var isPreparingPlayback = false
+    @State private var playbackErrorMessage: String?
 
     private let columns = [
         GridItem(.adaptive(minimum: 145, maximum: 205), spacing: 20)
@@ -48,16 +50,42 @@ struct DesktopLibraryView: View {
                 await model.cloud.upload(fileAt: url)
             }
         }
+        .alert(
+            "无法播放全部",
+            isPresented: Binding(
+                get: { playbackErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        playbackErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("好", role: .cancel) {
+                playbackErrorMessage = nil
+            }
+        } message: {
+            Text(playbackErrorMessage ?? "无法读取完整歌曲列表。")
+        }
     }
 
     @ViewBuilder
     private var headerActions: some View {
         switch section {
         case .songs:
-            Button("播放全部", systemImage: "play.fill") {
-                Task { await model.player.playAll(model.library.favoriteSongs) }
+            Button(action: playFavoriteSongs) {
+                HStack(spacing: 7) {
+                    Label("播放全部", systemImage: "play.fill")
+                    if isPreparingPlayback {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
             }
-            .disabled(model.library.favoriteSongs.isEmpty)
+            .disabled(
+                model.library.favoriteSongs.isEmpty
+                    || isPreparingPlayback
+            )
         case .downloads:
             Button("播放全部", systemImage: "play.fill") {
                 Task { await model.player.playAll(model.downloads.downloadedSongs) }
@@ -72,37 +100,102 @@ struct DesktopLibraryView: View {
 
     @ViewBuilder
     private var content: some View {
+        if isAwaitingInitialContent {
+            Color.clear
+                .frame(maxWidth: .infinity, minHeight: 340)
+        } else {
+            switch section {
+            case .recent:
+                songList(model.library.recentSongs)
+            case .songs:
+                favoriteSongList
+            case .downloads:
+                songList(model.downloads.downloadedSongs)
+            case .cloud:
+                cloudList
+            case .playlists:
+                playlistGrid
+            case .podcasts:
+                podcastGrid
+            default:
+                EmptyView()
+            }
+        }
+    }
+
+    private var favoriteSongList: some View {
+        VStack(spacing: 0) {
+            songList(
+                model.library.favoriteSongs,
+                loadMoreToken: model.library.hasMoreFavoriteSongs
+                    ? model.library.favoriteSongsNextOffset
+                    : nil,
+                onLoadMore: {
+                    await model.library.loadMoreFavoriteSongs()
+                }
+            )
+
+            if model.library.hasMoreFavoriteSongs {
+                DesktopCollectionPaginationFooter(
+                    isLoading: model.library.isLoadingMoreFavoriteSongs,
+                    failureMessage:
+                        model.library.favoriteSongsLoadMoreError
+                ) {
+                    await model.library.loadMoreFavoriteSongs()
+                }
+            }
+        }
+    }
+
+    private var isAwaitingInitialContent: Bool {
         switch section {
         case .recent:
-            songList(model.library.recentSongs)
+            model.library.phase == .loading
+                && model.library.recentSongs.isEmpty
         case .songs:
-            songList(model.library.favoriteSongs)
-        case .downloads:
-            songList(model.downloads.downloadedSongs)
-        case .cloud:
-            cloudList
+            model.library.phase == .loading
+                && model.library.favoriteSongs.isEmpty
         case .playlists:
-            playlistGrid
+            model.library.phase == .loading
+                && model.library.favoritePlaylists.isEmpty
         case .podcasts:
-            podcastGrid
+            model.library.phase == .loading
+                && model.library.subscribedPodcasts.isEmpty
+        case .cloud:
+            (model.cloud.phase == .loading || model.cloud.isUploading)
+                && model.cloud.items.isEmpty
         default:
-            EmptyView()
+            false
         }
     }
 
     @ViewBuilder
-    private func songList(_ songs: [Song]) -> some View {
+    private func songList(
+        _ songs: [Song],
+        loadMoreToken: Int? = nil,
+        onLoadMore: (() async -> Void)? = nil
+    ) -> some View {
         if songs.isEmpty {
             libraryEmptyView
         } else {
             LazyVStack(spacing: 2) {
                 ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
-                    DesktopTrackRow(
+                    let row = DesktopTrackRow(
                         song: song,
                         index: index,
                         songs: songs,
                         showsArtwork: true
                     )
+
+                    if song.id == songs.last?.id,
+                       let loadMoreToken,
+                       let onLoadMore {
+                        row.task(id: loadMoreToken) {
+                            await onLoadMore()
+                        }
+                    } else {
+                        row
+                    }
                 }
             }
         }
@@ -138,12 +231,35 @@ struct DesktopLibraryView: View {
         } else {
             LazyVGrid(columns: columns, spacing: 24) {
                 ForEach(podcasts) { podcast in
-                    DesktopMediaCard(
+                    let card = DesktopMediaCard(
                         title: podcast.name,
                         subtitle: podcast.subtitle,
                         artworkURL: podcast.artworkURL,
                         action: { model.ui.navigate(to: .podcast(podcast.id)) }
                     )
+
+                    if podcast.id == podcasts.last?.id,
+                       model.library.hasMoreSubscribedPodcasts {
+                        card.task(
+                            id: model.library.subscribedPodcastsNextOffset
+                        ) {
+                            await model.library.loadMoreSubscribedPodcasts()
+                        }
+                    } else {
+                        card
+                    }
+                }
+            }
+
+            if model.library.hasMoreSubscribedPodcasts {
+                DesktopCollectionPaginationFooter(
+                    isLoading:
+                        model.library.isLoadingMoreSubscribedPodcasts,
+                    failureMessage:
+                        model.library.subscribedPodcastsLoadMoreError,
+                    loadingTitle: "正在加载更多播客"
+                ) {
+                    await model.library.loadMoreSubscribedPodcasts()
                 }
             }
         }
@@ -151,9 +267,6 @@ struct DesktopLibraryView: View {
 
     @ViewBuilder
     private var cloudList: some View {
-        if model.cloud.isUploading {
-            ProgressView("正在上传音乐…")
-        }
         if model.cloud.items.isEmpty {
             libraryEmptyView
         } else {
@@ -199,8 +312,30 @@ struct DesktopLibraryView: View {
 
     private func play(_ playlist: Playlist) {
         Task {
-            guard let detail = try? await model.api.playlist(id: playlist.id) else { return }
+            guard let detail = try? await model.api.playlist(
+                id: playlist.id,
+                trackLimit: nil
+            ) else { return }
             await model.player.playAll(detail.tracks, sourceID: playlist.id)
+        }
+    }
+
+    private func playFavoriteSongs() {
+        guard !isPreparingPlayback else { return }
+        isPreparingPlayback = true
+        playbackErrorMessage = nil
+
+        Task { @MainActor in
+            defer { isPreparingPlayback = false }
+            do {
+                let songs = try await model.library.favoriteSongsForPlayback()
+                try Task.checkCancellation()
+                await model.player.playAll(songs)
+            } catch is CancellationError {
+                return
+            } catch {
+                playbackErrorMessage = error.localizedDescription
+            }
         }
     }
 }

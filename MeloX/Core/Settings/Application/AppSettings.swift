@@ -6,8 +6,10 @@ import Observation
 final class AppSettings {
     static let defaultPlayerVolumeControlMode: PlayerVolumeControlMode = .system
     static let defaultPlayerBackgroundStyle: PlayerBackgroundStyle =
-        .flowingLight
+        .appleMusicBackdrop
     static let defaultPlayerBackgroundMotionIntensity = 1.0
+    static let defaultPlayerBackgroundSaturation = 1.0
+    static let defaultPlayerBackgroundAudioResponseEnabled = false
     static let defaultPlayerBackgroundBeatEffectsEnabled = false
     static let defaultBeatNetDebugEnabled = false
     static let defaultStartsHeartModeOnLaunch = false
@@ -32,7 +34,6 @@ final class AppSettings {
     static let defaultLyricsLiveActivityScrollPause = 1.0
     static let lyricsLiveActivityScrollPauseRange = 0.0...3.0
     static let automaticCachePlaybackThresholdOptions = [3, 5, 10, 20]
-    static let defaultLyricsInterludeCountdownEnabled = true
     static let defaultAppleMusicLyricsInterfaceAutoHideDelay = 5.0
     static let appleMusicLyricsInterfaceAutoHideDelayRange = 3.0...15.0
     static let defaultAppleMusicLyricsScrollHideThreshold = 200.0
@@ -54,7 +55,7 @@ final class AppSettings {
     static let lyricsFocusCascadeDelayRange = 0.0...0.1
     static let defaultLyricsFocusCascadeDelayIncrease = 0.005
     static let lyricsFocusCascadeDelayIncreaseRange = 0.0...0.1
-    static let defaultLyricsFocusCascadeFollowingDelay = 0.048
+    static let defaultLyricsFocusCascadeFollowingDelay = 0.030
     static let lyricsFocusCascadeFollowingDelayRange = 0.0...0.2
     static let defaultLyricsFocusCascadeCatchUpRatio = 0.97
     static let lyricsFocusCascadeCatchUpRatioRange = 0.5...1.0
@@ -96,6 +97,7 @@ final class AppSettings {
         static let hasCompletedOnboarding = "melox.hasCompletedOnboarding"
         static let cookie = "musicCookie"
         static let quality = "musicQuality"
+        static let cellularQuality = "cellularMusicQuality"
         static let playerVolumeControlMode = "playerVolumeControlMode"
         static let systemNowPlayingLyricsEnabled =
             "systemNowPlayingLyricsEnabled"
@@ -143,13 +145,13 @@ final class AppSettings {
             "playerBackgroundMotionIntensity"
         static let playerBackgroundBeatEffectsEnabled =
             "playerBackgroundBeatEffectsEnabled"
+        static let playerBackgroundAudioResponseEnabled =
+            "playerBackgroundAudioResponseEnabled"
         static let beatNetDebugEnabled = "beatNetDebugEnabled"
         static let playerBackgroundBlur = "playerBackgroundBlur"
         static let playerBackgroundSaturation = "playerBackgroundSaturation"
         static let shrinksPausedArtwork = "shrinksPausedArtwork"
         static let lyricsStyle = "lyricsStyle"
-        static let lyricsInterludeCountdownEnabled =
-            "lyricsInterludeCountdownEnabled"
         static let appleMusicLyricsInterfaceAutoHideDelay =
             "appleMusicLyricsInterfaceAutoHideDelay"
         static let appleMusicLyricsScrollHideThreshold =
@@ -168,6 +170,9 @@ final class AppSettings {
         static let lyricsLongPressToShare = "lyricsLongPressToShare"
         static let lyricsWordByWord = "lyricsWordByWord"
         static let lyricsPseudoWordByWord = "lyricsPseudoWordByWord"
+        static let lyricsDuetLayoutEnabled = "lyricsDuetLayoutEnabled"
+        static let lyricsAMLLSourceEnabled = "lyricsAMLLSourceEnabled"
+        static let lyricsQQMusicSourceEnabled = "lyricsQQMusicSourceEnabled"
         static let lyricsLiftMode = "lyricsLiftMode"
         static let lyricsHighlightGradientWidth =
             "lyricsHighlightGradientWidth"
@@ -252,6 +257,15 @@ final class AppSettings {
 
     var quality: MusicQuality {
         didSet { defaults.set(quality.rawValue, forKey: Key.quality) }
+    }
+
+    var cellularQuality: MusicQuality {
+        didSet {
+            defaults.set(
+                cellularQuality.rawValue,
+                forKey: Key.cellularQuality
+            )
+        }
     }
 
     var playerVolumeControlMode: PlayerVolumeControlMode {
@@ -473,7 +487,8 @@ final class AppSettings {
 
     var embeddedLibraryPages: [LibraryPage] {
         LibraryPage.availableCases.filter {
-            !separatedLibraryPages.contains($0)
+            isLibraryPageEnabled($0)
+                && !separatedLibraryPages.contains($0)
         }
     }
 
@@ -482,6 +497,7 @@ final class AppSettings {
             homeTabOrder,
             separatedLibraryPages: separatedLibraryPages
         )
+        .filter(isNavigationTabEnabled)
     }
 
     var visibleTabs: [AppTab] {
@@ -490,6 +506,7 @@ final class AppSettings {
             separatedLibraryPages: separatedLibraryPages,
             homeTabs: homeTabs
         )
+        .filter(isNavigationTabEnabled)
     }
 
     var launchTab: AppTab {
@@ -534,6 +551,7 @@ final class AppSettings {
         placement: AppPagePlacement
     ) {
         guard AppTab.configurablePages.contains(tab),
+              isNavigationTabEnabled(tab),
               tab.allowedPlacements.contains(placement) else {
             return
         }
@@ -581,18 +599,46 @@ final class AppSettings {
     }
 
     func setHomeTabOrder(_ tabs: [AppTab]) {
+        let disabledTabs = homeTabOrder.filter {
+            !isNavigationTabEnabled($0)
+        }
         homeTabOrder = Self.normalizedHomeTabOrder(
-            tabs,
+            tabs + disabledTabs,
             separatedLibraryPages: separatedLibraryPages
         )
     }
 
     func setVisibleTabOrder(_ tabs: [AppTab]) {
+        let disabledTabs = tabOrder.filter {
+            !isNavigationTabEnabled($0)
+        }
         tabOrder = Self.normalizedTabOrder(
-            tabs,
+            tabs + disabledTabs,
             separatedLibraryPages: separatedLibraryPages,
             homeTabs: homeTabs
         )
+    }
+
+    func isContentFeatureEnabled(_ feature: ContentFeature) -> Bool {
+        contentFeatures.isEnabled(feature)
+    }
+
+    func setContentFeature(
+        _ feature: ContentFeature,
+        isEnabled: Bool
+    ) {
+        contentFeatures.setEnabled(isEnabled, for: feature)
+        normalizeNavigationSelections()
+    }
+
+    func isNavigationTabEnabled(_ tab: AppTab) -> Bool {
+        guard let feature = tab.requiredContentFeature else { return true }
+        return isContentFeatureEnabled(feature)
+    }
+
+    func isLibraryPageEnabled(_ page: LibraryPage) -> Bool {
+        guard let feature = page.requiredContentFeature else { return true }
+        return isContentFeatureEnabled(feature)
     }
 
     func resetTabLayout() {
@@ -644,6 +690,15 @@ final class AppSettings {
         }
     }
 
+    var playerBackgroundAudioResponseEnabled: Bool {
+        didSet {
+            defaults.set(
+                playerBackgroundAudioResponseEnabled,
+                forKey: Key.playerBackgroundAudioResponseEnabled
+            )
+        }
+    }
+
     var beatNetDebugEnabled: Bool {
         didSet {
             defaults.set(
@@ -667,15 +722,6 @@ final class AppSettings {
 
     var lyricsStyle: LyricsStyle {
         didSet { defaults.set(lyricsStyle.rawValue, forKey: Key.lyricsStyle) }
-    }
-
-    var lyricsInterludeCountdownEnabled: Bool {
-        didSet {
-            defaults.set(
-                lyricsInterludeCountdownEnabled,
-                forKey: Key.lyricsInterludeCountdownEnabled
-            )
-        }
     }
 
     var appleMusicLyricsInterfaceAutoHideDelay: Double {
@@ -771,6 +817,33 @@ final class AppSettings {
 
     var lyricsPseudoWordByWord: Bool {
         didSet { defaults.set(lyricsPseudoWordByWord, forKey: Key.lyricsPseudoWordByWord) }
+    }
+
+    var lyricsDuetLayoutEnabled: Bool {
+        didSet {
+            defaults.set(
+                lyricsDuetLayoutEnabled,
+                forKey: Key.lyricsDuetLayoutEnabled
+            )
+        }
+    }
+
+    var lyricsAMLLSourceEnabled: Bool {
+        didSet {
+            defaults.set(
+                lyricsAMLLSourceEnabled,
+                forKey: Key.lyricsAMLLSourceEnabled
+            )
+        }
+    }
+
+    var lyricsQQMusicSourceEnabled: Bool {
+        didSet {
+            defaults.set(
+                lyricsQQMusicSourceEnabled,
+                forKey: Key.lyricsQQMusicSourceEnabled
+            )
+        }
     }
 
     var lyricsLiftMode: LyricsLiftMode {
@@ -1062,7 +1135,10 @@ final class AppSettings {
     func effectiveLyricsAdvanceTime(
         hasSyllableSyncedLyrics: Bool
     ) -> TimeInterval {
-        hasSyllableSyncedLyrics
+        let usesWordByWordPresentation = hasSyllableSyncedLyrics
+            ? lyricsWordByWord
+            : lyricsPseudoWordByWord
+        return usesWordByWordPresentation
             ? wordByWordLyricsAdvanceTime
             : lyricsAdvanceTime
     }
@@ -1156,6 +1232,8 @@ final class AppSettings {
     }
 
     let skylineLyrics: SkylineLyricsPreferences
+    let appleMusicLyrics: AppleMusicLyricsPreferences
+    let lyricsInterlude: LyricsInterludePreferences
     let textPV: TextPVPreferences
     let equalizer: AudioEqualizerPreferences
     let autoMix: AutoMixPreferences
@@ -1163,6 +1241,7 @@ final class AppSettings {
     let lyricsNotifications: LyricsNotificationPreferences
     let songRecognition: SongRecognitionPreferences
     let playlistDisplay: PlaylistDisplayPreferences
+    let contentFeatures: ContentFeaturePreferences
 
     @ObservationIgnored
     private let defaults: UserDefaults
@@ -1170,6 +1249,8 @@ final class AppSettings {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         skylineLyrics = SkylineLyricsPreferences(defaults: defaults)
+        appleMusicLyrics = AppleMusicLyricsPreferences(defaults: defaults)
+        lyricsInterlude = LyricsInterludePreferences(defaults: defaults)
         textPV = TextPVPreferences(defaults: defaults)
         equalizer = AudioEqualizerPreferences(defaults: defaults)
         autoMix = AutoMixPreferences(defaults: defaults)
@@ -1179,11 +1260,15 @@ final class AppSettings {
         )
         songRecognition = SongRecognitionPreferences(defaults: defaults)
         playlistDisplay = PlaylistDisplayPreferences(defaults: defaults)
+        contentFeatures = ContentFeaturePreferences(defaults: defaults)
         hasCompletedOnboarding = defaults.bool(
             forKey: Key.hasCompletedOnboarding
         )
         cookie = defaults.string(forKey: Key.cookie) ?? ""
         quality = MusicQuality(rawValue: defaults.string(forKey: Key.quality) ?? "") ?? .high
+        cellularQuality = MusicQuality(
+            rawValue: defaults.string(forKey: Key.cellularQuality) ?? ""
+        ) ?? .high
         playerVolumeControlMode = PlayerVolumeControlMode(
             rawValue: defaults.string(forKey: Key.playerVolumeControlMode) ?? ""
         ) ?? Self.defaultPlayerVolumeControlMode
@@ -1302,11 +1387,16 @@ final class AppSettings {
         playerBackgroundBeatEffectsEnabled = defaults.object(
             forKey: Key.playerBackgroundBeatEffectsEnabled
         ) as? Bool ?? Self.defaultPlayerBackgroundBeatEffectsEnabled
+        playerBackgroundAudioResponseEnabled = defaults.object(
+            forKey: Key.playerBackgroundAudioResponseEnabled
+        ) as? Bool ?? Self.defaultPlayerBackgroundAudioResponseEnabled
         beatNetDebugEnabled = defaults.object(
             forKey: Key.beatNetDebugEnabled
         ) as? Bool ?? Self.defaultBeatNetDebugEnabled
         playerBackgroundBlur = defaults.object(forKey: Key.playerBackgroundBlur) as? Double ?? 90
-        playerBackgroundSaturation = defaults.object(forKey: Key.playerBackgroundSaturation) as? Double ?? 0.82
+        playerBackgroundSaturation = defaults.object(
+            forKey: Key.playerBackgroundSaturation
+        ) as? Double ?? Self.defaultPlayerBackgroundSaturation
         shrinksPausedArtwork = defaults.object(forKey: Key.shrinksPausedArtwork) as? Bool ?? true
         let storedLyricsStyle = defaults.string(forKey: Key.lyricsStyle) ?? ""
         switch storedLyricsStyle {
@@ -1315,9 +1405,6 @@ final class AppSettings {
         default:
             lyricsStyle = LyricsStyle(rawValue: storedLyricsStyle) ?? .appleMusic
         }
-        lyricsInterludeCountdownEnabled = defaults.object(
-            forKey: Key.lyricsInterludeCountdownEnabled
-        ) as? Bool ?? Self.defaultLyricsInterludeCountdownEnabled
         let storedAppleMusicInterfaceAutoHideDelay = defaults.object(
             forKey: Key.appleMusicLyricsInterfaceAutoHideDelay
         ) as? Double ?? Self.defaultAppleMusicLyricsInterfaceAutoHideDelay
@@ -1390,6 +1477,15 @@ final class AppSettings {
         ) as? Bool ?? true
         lyricsWordByWord = defaults.object(forKey: Key.lyricsWordByWord) as? Bool ?? true
         lyricsPseudoWordByWord = defaults.object(forKey: Key.lyricsPseudoWordByWord) as? Bool ?? false
+        lyricsDuetLayoutEnabled = defaults.object(
+            forKey: Key.lyricsDuetLayoutEnabled
+        ) as? Bool ?? true
+        lyricsAMLLSourceEnabled = defaults.object(
+            forKey: Key.lyricsAMLLSourceEnabled
+        ) as? Bool ?? true
+        lyricsQQMusicSourceEnabled = defaults.object(
+            forKey: Key.lyricsQQMusicSourceEnabled
+        ) as? Bool ?? true
         lyricsLiftMode = LyricsLiftMode(
             rawValue: defaults.string(forKey: Key.lyricsLiftMode) ?? ""
         ) ?? Self.defaultLyricsLiftMode
@@ -1795,6 +1891,7 @@ final class AppSettings {
 
     func resetPlayerSettings() {
         quality = .high
+        cellularQuality = .high
         playerVolumeControlMode = Self.defaultPlayerVolumeControlMode
         systemNowPlayingLyricsEnabled =
             Self.defaultSystemNowPlayingLyricsEnabled
@@ -1832,14 +1929,16 @@ final class AppSettings {
             Self.defaultPlayerBackgroundMotionIntensity
         playerBackgroundBeatEffectsEnabled =
             Self.defaultPlayerBackgroundBeatEffectsEnabled
+        playerBackgroundAudioResponseEnabled =
+            Self.defaultPlayerBackgroundAudioResponseEnabled
         beatNetDebugEnabled =
             Self.defaultBeatNetDebugEnabled
         playerBackgroundBlur = 90
-        playerBackgroundSaturation = 0.82
+        playerBackgroundSaturation =
+            Self.defaultPlayerBackgroundSaturation
         shrinksPausedArtwork = true
         lyricsStyle = .appleMusic
-        lyricsInterludeCountdownEnabled =
-            Self.defaultLyricsInterludeCountdownEnabled
+        lyricsInterlude.reset()
         appleMusicLyricsInterfaceAutoHideDelay =
             Self.defaultAppleMusicLyricsInterfaceAutoHideDelay
         appleMusicLyricsScrollHideThreshold =
@@ -1858,6 +1957,9 @@ final class AppSettings {
         lyricsLongPressToShare = true
         lyricsWordByWord = true
         lyricsPseudoWordByWord = false
+        lyricsDuetLayoutEnabled = true
+        lyricsAMLLSourceEnabled = true
+        lyricsQQMusicSourceEnabled = true
         lyricsLiftMode = Self.defaultLyricsLiftMode
         lyricsHighlightGradientWidth =
             Self.defaultLyricsHighlightGradientWidth
@@ -1917,6 +2019,7 @@ final class AppSettings {
         rememberedNowPlayingPage = "artwork"
         previousRestartsCurrentSong = true
         startsHeartModeOnLaunch = Self.defaultStartsHeartModeOnLaunch
+        appleMusicLyrics.reset()
         skylineLyrics.reset()
         playlistDisplay.reset()
     }

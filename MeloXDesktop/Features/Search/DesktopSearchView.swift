@@ -11,43 +11,63 @@ private final class DesktopSearchStore {
     private(set) var isSearching = false
     private(set) var errorMessage: String?
 
+    @ObservationIgnored
+    private var activeSearchID: UUID?
+
     func search(using model: DesktopAppModel) async {
         let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !keyword.isEmpty else {
+            activeSearchID = nil
+            isSearching = false
             payload = nil
             errorMessage = nil
             return
         }
 
+        let searchID = UUID()
+        activeSearchID = searchID
         isSearching = true
         errorMessage = nil
+        defer {
+            if activeSearchID == searchID {
+                isSearching = false
+            }
+        }
+
         do {
+            let loadedPayload: SearchPayload
             if source == .catalog {
-                payload = try await model.api.search(
+                loadedPayload = try await model.api.search(
                     keyword,
                     kind: kind,
                     limit: 60
                 )
             } else {
-                payload = libraryPayload(
+                loadedPayload = libraryPayload(
                     matching: keyword,
-                    library: model.library
+                    model: model
                 )
             }
+            guard activeSearchID == searchID else { return }
+            payload = loadedPayload
         } catch is CancellationError {
             return
         } catch {
+            guard activeSearchID == searchID else { return }
             errorMessage = error.localizedDescription
         }
-        isSearching = false
     }
 
     private func libraryPayload(
         matching keyword: String,
-        library: LibraryStore
+        model: DesktopAppModel
     ) -> SearchPayload {
+        let library = model.library
         let songs = unique(
-            library.favoriteSongs + library.recentSongs,
+            library.favoriteSongs
+                + (model.settings.isContentFeatureEnabled(
+                    .listeningHistory
+                ) ? library.recentSongs : []),
             by: \.id
         )
         let matchingSongs = songs.filter {
@@ -71,9 +91,11 @@ private final class DesktopSearchStore {
         let playlists = library.favoritePlaylists.filter {
             matches(keyword, values: [$0.name, $0.creator?.nickname])
         }
-        let podcasts = library.subscribedPodcasts.filter {
-            matches(keyword, values: [$0.name, $0.subtitle])
-        }
+        let podcasts = model.settings.isContentFeatureEnabled(.podcasts)
+            ? library.subscribedPodcasts.filter {
+                matches(keyword, values: [$0.name, $0.subtitle])
+            }
+            : []
 
         return SearchPayload(
             songs: matchingSongs,
@@ -121,7 +143,7 @@ struct DesktopSearchView: View {
         VStack(spacing: 0) {
             if !store.query.isEmpty {
                 Picker("类型", selection: $store.kind) {
-                    ForEach(SearchKind.allCases) { kind in
+                    ForEach(availableSearchKinds) { kind in
                         Text(kind.title).tag(kind)
                     }
                 }
@@ -138,10 +160,7 @@ struct DesktopSearchView: View {
 
             ScrollView {
                 Group {
-                    if store.isSearching {
-                        ProgressView("正在搜索…")
-                            .frame(maxWidth: .infinity, minHeight: 320)
-                    } else if let error = store.errorMessage {
+                    if let error = store.errorMessage {
                         ContentUnavailableView(
                             "搜索失败",
                             systemImage: "exclamationmark.magnifyingglass",
@@ -150,6 +169,9 @@ struct DesktopSearchView: View {
                         .frame(maxWidth: .infinity, minHeight: 320)
                     } else if let payload = store.payload {
                         results(payload)
+                    } else if store.isSearching {
+                        Color.clear
+                            .frame(maxWidth: .infinity, minHeight: 320)
                     } else {
                         ContentUnavailableView(
                             "搜索 MeloX",
@@ -163,6 +185,10 @@ struct DesktopSearchView: View {
                 .padding(.vertical, 24)
             }
         }
+        .desktopLoadingStatus(
+            "正在搜索…",
+            isPresented: store.isSearching
+        )
         .animation(.smooth(duration: 0.22), value: store.query.isEmpty)
         .toolbar {
             if !model.ui.isNowPlayingPresented {
@@ -202,6 +228,20 @@ struct DesktopSearchView: View {
             try? await Task.sleep(for: .milliseconds(320))
             guard !Task.isCancelled else { return }
             await store.search(using: model)
+        }
+        .onChange(
+            of: model.settings.isContentFeatureEnabled(.podcasts)
+        ) { _, podcastsEnabled in
+            if !podcastsEnabled, store.kind == .podcasts {
+                store.kind = .songs
+            }
+        }
+    }
+
+    private var availableSearchKinds: [SearchKind] {
+        SearchKind.allCases.filter {
+            $0 != .podcasts
+                || model.settings.isContentFeatureEnabled(.podcasts)
         }
     }
 
@@ -330,7 +370,10 @@ struct DesktopSearchView: View {
 
     private func play(_ playlist: Playlist) {
         Task {
-            guard let detail = try? await model.api.playlist(id: playlist.id) else { return }
+            guard let detail = try? await model.api.playlist(
+                id: playlist.id,
+                trackLimit: nil
+            ) else { return }
             await model.player.playAll(detail.tracks, sourceID: playlist.id)
         }
     }

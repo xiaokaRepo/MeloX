@@ -8,6 +8,7 @@ struct AlbumDetailView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(DownloadStore.self) private var downloads
     @Environment(GatewayProviderStore.self) private var gateway
+    @Environment(AppSettings.self) private var settings
     @Environment(\.colorScheme) private var systemColorScheme
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.setTabViewBottomAccessorySuppressed)
@@ -49,7 +50,7 @@ struct AlbumDetailView: View {
             failureMessage: initialFailureMessage,
             isSubscribed: isSubscribed,
             downloadCoordinator:
-                AppFeatureAvailability.downloads
+                downloadsEnabled
                     ? downloadCoordinator
                     : nil,
             onToggleSubscription: toggleSubscription,
@@ -66,7 +67,7 @@ struct AlbumDetailView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(interfaceColorScheme, for: .navigationBar, .tabBar)
         .toolbar {
-            if AppFeatureAvailability.downloads,
+            if downloadsEnabled,
                downloadCoordinator.isSelecting {
                 downloadSelectionToolbar
             } else {
@@ -74,7 +75,7 @@ struct AlbumDetailView: View {
             }
         }
         .toolbarVisibility(
-            AppFeatureAvailability.downloads
+            downloadsEnabled
                 && downloadCoordinator.isSelecting
                 ? .hidden
                 : .automatic,
@@ -85,6 +86,12 @@ struct AlbumDetailView: View {
             updateTabViewBottomAccessoryVisibility()
         }
         .onChange(of: downloadCoordinator.isSelecting) {
+            updateTabViewBottomAccessoryVisibility()
+        }
+        .onChange(of: downloadsEnabled) { _, isEnabled in
+            if !isEnabled {
+                downloadCoordinator.finishSelection()
+            }
             updateTabViewBottomAccessoryVisibility()
         }
         .onDisappear {
@@ -144,7 +151,7 @@ struct AlbumDetailView: View {
             "无法准备下载",
             isPresented: Binding(
                 get: {
-                    AppFeatureAvailability.downloads
+                    downloadsEnabled
                         && downloadCoordinator.errorMessage != nil
                 },
                 set: { isPresented in
@@ -167,6 +174,10 @@ struct AlbumDetailView: View {
 
     private var displayedAlbum: Album {
         album ?? initialAlbum
+    }
+
+    private var downloadsEnabled: Bool {
+        settings.isContentFeatureEnabled(.downloads)
     }
 
     private var resolvedPalette: ArtworkDetailPalette {
@@ -196,7 +207,7 @@ struct AlbumDetailView: View {
     }
 
     private var downloadableSongIDs: [Int] {
-        guard AppFeatureAvailability.downloads else { return [] }
+        guard downloadsEnabled else { return [] }
         let unavailableSongIDs = Set(downloads.downloads.map(\.id))
             .union(downloads.activeDownloads.keys)
         return MusicCollectionDownloadCoordinator.songIDs(
@@ -207,7 +218,7 @@ struct AlbumDetailView: View {
 
     private func updateTabViewBottomAccessoryVisibility() {
         setTabViewBottomAccessorySuppressed(
-            AppFeatureAvailability.downloads
+            downloadsEnabled
                 && downloadCoordinator.isSelecting
         )
     }
@@ -215,7 +226,7 @@ struct AlbumDetailView: View {
     @ToolbarContentBuilder
     private var albumToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
-            if AppFeatureAvailability.downloads,
+            if downloadsEnabled,
                downloadCoordinator.isPreparing {
                 ProgressView()
                     .accessibilityLabel(
@@ -231,7 +242,7 @@ struct AlbumDetailView: View {
             .accessibilityLabel("分享专辑")
 
             Menu {
-                if AppFeatureAvailability.downloads {
+                if downloadsEnabled {
                     MusicCollectionDownloadMenuContent(
                         coordinator: downloadCoordinator,
                         downloadableSongCount:
@@ -275,7 +286,7 @@ struct AlbumDetailView: View {
     }
 
     private func startDownloadAll(quality: MusicQuality) {
-        guard AppFeatureAvailability.downloads else { return }
+        guard downloadsEnabled else { return }
         let songs = songs
         Task {
             await downloadCoordinator.downloadAll(
@@ -288,7 +299,7 @@ struct AlbumDetailView: View {
     }
 
     private func startSelectedDownloads(quality: MusicQuality) {
-        guard AppFeatureAvailability.downloads else { return }
+        guard downloadsEnabled else { return }
         let songs = songs
         Task {
             await downloadCoordinator.downloadSelection(

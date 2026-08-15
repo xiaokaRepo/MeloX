@@ -5,27 +5,42 @@ struct DesktopHomeView: View {
 
     private enum Metrics {
         static let horizontalPadding: CGFloat = 52
-        static let heroColumns = 3
+        static let heroMinimumCardWidth: CGFloat = 200
         static let heroSpacing: CGFloat = 20
-        static let mediaColumns = 4
+        static let mediaMinimumCardWidth: CGFloat = 145
         static let mediaSpacing: CGFloat = 24
 
-        static func cardWidth(
+        struct ShelfLayout {
+            let cardWidth: CGFloat
+            let visibleItemCount: Int
+        }
+
+        static func shelfLayout(
             containerWidth: CGFloat,
             reservedTrailingWidth: CGFloat,
-            columnCount: Int,
+            minimumCardWidth: CGFloat,
             spacing: CGFloat
-        ) -> CGFloat {
+        ) -> ShelfLayout {
             let usableWidth = max(
                 containerWidth
                     - reservedTrailingWidth
                     - horizontalPadding * 2,
                 0
             )
-            let totalSpacing = spacing * CGFloat(max(columnCount - 1, 0))
+            let columnCount = max(
+                Int(
+                    (usableWidth + spacing)
+                        / (minimumCardWidth + spacing)
+                ),
+                1
+            )
+            let totalSpacing = spacing * CGFloat(columnCount - 1)
             let rawWidth = (usableWidth - totalSpacing)
                 / CGFloat(columnCount)
-            return max(rawWidth.rounded(.down), 1)
+            return ShelfLayout(
+                cardWidth: max(rawWidth.rounded(.down), 1),
+                visibleItemCount: columnCount
+            )
         }
     }
 
@@ -35,16 +50,16 @@ struct DesktopHomeView: View {
             let reservedTrailingWidth = isInspectorPresented
                 ? DesktopMainWindowMetrics.playerSidePanelWidth
                 : 0
-            let heroCardWidth = Metrics.cardWidth(
+            let heroLayout = Metrics.shelfLayout(
                 containerWidth: proxy.size.width,
                 reservedTrailingWidth: reservedTrailingWidth,
-                columnCount: Metrics.heroColumns,
+                minimumCardWidth: Metrics.heroMinimumCardWidth,
                 spacing: Metrics.heroSpacing
             )
-            let mediaCardWidth = Metrics.cardWidth(
+            let mediaLayout = Metrics.shelfLayout(
                 containerWidth: proxy.size.width,
                 reservedTrailingWidth: reservedTrailingWidth,
-                columnCount: Metrics.mediaColumns,
+                minimumCardWidth: Metrics.mediaMinimumCardWidth,
                 spacing: Metrics.mediaSpacing
             )
 
@@ -54,43 +69,46 @@ struct DesktopHomeView: View {
                         .font(.system(size: 46, weight: .bold))
 
                     DesktopHomeQuickActionsView(
-                        cardWidth: heroCardWidth,
+                        cardWidth: heroLayout.cardWidth,
                         spacing: Metrics.heroSpacing,
-                        visibleItemCount: Metrics.heroColumns,
+                        visibleItemCount: heroLayout.visibleItemCount,
                         trailingOverlayInset: reservedTrailingWidth
                     )
 
                     heroSection(
-                        cardWidth: heroCardWidth,
+                        layout: heroLayout,
                         trailingOverlayInset: reservedTrailingWidth
                     )
 
-                    if !recentSongs.isEmpty {
+                    if model.settings.isContentFeatureEnabled(
+                        .listeningHistory
+                    ), !recentSongs.isEmpty {
                         songCardSection(
                             title: "最近播放",
                             songs: Array(recentSongs.prefix(8)),
-                            cardWidth: mediaCardWidth,
+                            layout: mediaLayout,
                             trailingOverlayInset: reservedTrailingWidth
                         )
                     }
 
                     if !model.home.recommendedPlaylists.isEmpty {
                         playlistSection(
-                            cardWidth: mediaCardWidth,
+                            layout: mediaLayout,
                             trailingOverlayInset: reservedTrailingWidth
                         )
                     }
 
                     if !model.home.newAlbums.isEmpty {
                         albumSection(
-                            cardWidth: mediaCardWidth,
+                            layout: mediaLayout,
                             trailingOverlayInset: reservedTrailingWidth
                         )
                     }
 
-                    if !model.home.podcastPrograms.isEmpty {
+                    if model.settings.isContentFeatureEnabled(.podcasts),
+                       !model.home.podcastPrograms.isEmpty {
                         podcastProgramSection(
-                            cardWidth: mediaCardWidth,
+                            layout: mediaLayout,
                             trailingOverlayInset: reservedTrailingWidth
                         )
                     }
@@ -115,7 +133,7 @@ struct DesktopHomeView: View {
 
     @ViewBuilder
     private func heroSection(
-        cardWidth: CGFloat,
+        layout: Metrics.ShelfLayout,
         trailingOverlayInset: CGFloat
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -123,24 +141,15 @@ struct DesktopHomeView: View {
 
             if model.home.recommendedPlaylists.isEmpty {
                 if model.home.phase == .loading {
-                    HStack {
-                        Spacer()
-                        Label(
-                            "正在载入为你准备的内容…",
-                            systemImage: "sparkles"
-                        )
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        Spacer()
-                    }
+                    Color.clear
                     .frame(height: 270)
                 }
             } else {
                 DesktopHomePagingShelf(
                     items: Array(model.home.recommendedPlaylists.prefix(7)),
-                    cardWidth: cardWidth,
+                    cardWidth: layout.cardWidth,
                     spacing: Metrics.heroSpacing,
-                    visibleItemCount: Metrics.heroColumns,
+                    visibleItemCount: layout.visibleItemCount,
                     trailingOverlayInset: trailingOverlayInset
                 ) { playlist in
                     DesktopHeroCard(
@@ -167,16 +176,16 @@ struct DesktopHomeView: View {
     private func songCardSection(
         title: String,
         songs: [Song],
-        cardWidth: CGFloat,
+        layout: Metrics.ShelfLayout,
         trailingOverlayInset: CGFloat
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             DesktopSectionHeader(title: title)
             DesktopHomePagingShelf(
                 items: songs,
-                cardWidth: cardWidth,
+                cardWidth: layout.cardWidth,
                 spacing: Metrics.mediaSpacing,
-                visibleItemCount: Metrics.mediaColumns,
+                visibleItemCount: layout.visibleItemCount,
                 trailingOverlayInset: trailingOverlayInset
             ) { song in
                 DesktopMediaCard(
@@ -193,7 +202,7 @@ struct DesktopHomeView: View {
     }
 
     private func playlistSection(
-        cardWidth: CGFloat,
+        layout: Metrics.ShelfLayout,
         trailingOverlayInset: CGFloat
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -205,9 +214,9 @@ struct DesktopHomeView: View {
             }
             DesktopHomePagingShelf(
                 items: Array(model.home.recommendedPlaylists.prefix(12)),
-                cardWidth: cardWidth,
+                cardWidth: layout.cardWidth,
                 spacing: Metrics.mediaSpacing,
-                visibleItemCount: Metrics.mediaColumns,
+                visibleItemCount: layout.visibleItemCount,
                 trailingOverlayInset: trailingOverlayInset
             ) { playlist in
                 DesktopMediaCard(
@@ -224,7 +233,7 @@ struct DesktopHomeView: View {
     }
 
     private func albumSection(
-        cardWidth: CGFloat,
+        layout: Metrics.ShelfLayout,
         trailingOverlayInset: CGFloat
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -236,9 +245,9 @@ struct DesktopHomeView: View {
             }
             DesktopHomePagingShelf(
                 items: Array(model.home.newAlbums.prefix(12)),
-                cardWidth: cardWidth,
+                cardWidth: layout.cardWidth,
                 spacing: Metrics.mediaSpacing,
-                visibleItemCount: Metrics.mediaColumns,
+                visibleItemCount: layout.visibleItemCount,
                 trailingOverlayInset: trailingOverlayInset
             ) { album in
                 DesktopMediaCard(
@@ -253,7 +262,7 @@ struct DesktopHomeView: View {
     }
 
     private func podcastProgramSection(
-        cardWidth: CGFloat,
+        layout: Metrics.ShelfLayout,
         trailingOverlayInset: CGFloat
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -265,9 +274,9 @@ struct DesktopHomeView: View {
             }
             DesktopHomePagingShelf(
                 items: Array(model.home.podcastPrograms.prefix(8)),
-                cardWidth: cardWidth,
+                cardWidth: layout.cardWidth,
                 spacing: Metrics.mediaSpacing,
-                visibleItemCount: Metrics.mediaColumns,
+                visibleItemCount: layout.visibleItemCount,
                 trailingOverlayInset: trailingOverlayInset
             ) { program in
                 DesktopMediaCard(
@@ -287,7 +296,7 @@ struct DesktopHomeView: View {
         Task {
             guard let detail = try? await model.api.playlist(
                 id: playlist.id,
-                trackLimit: 100
+                trackLimit: nil
             ) else { return }
             await model.player.playAll(detail.tracks, sourceID: detail.id)
         }

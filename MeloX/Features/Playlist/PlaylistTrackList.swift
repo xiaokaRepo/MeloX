@@ -55,6 +55,7 @@ private struct PlaylistTrackRow: View {
     @Environment(PlayerStore.self) private var player
     @Environment(LibraryStore.self) private var library
     @Environment(DownloadStore.self) private var downloads
+    @Environment(AppSettings.self) private var settings
 
     @State private var presentedSheet: PlaylistSongSheet?
 
@@ -124,7 +125,7 @@ private struct PlaylistTrackRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityLabel(song.gatewayReference?.platform ?? "外部音源")
-            } else if AppFeatureAvailability.downloads {
+            } else if settings.isContentFeatureEnabled(.downloads) {
                 if downloads.isDownloading(songID: song.id) {
                     ProgressView()
                         .controlSize(.mini)
@@ -150,7 +151,7 @@ private struct PlaylistTrackRow: View {
                     }
 
                     if song.gatewayReference == nil,
-                       AppFeatureAvailability.downloads {
+                       settings.isContentFeatureEnabled(.downloads) {
                         if downloads.isDownloading(songID: song.id) {
                             Button {
                                 downloads.cancel(songID: song.id)

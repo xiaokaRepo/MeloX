@@ -20,16 +20,15 @@ final class AudioPlaybackItemFactory {
         autoMixEqualizerState:
             SharedAutoMixEqualizerState
     ) async -> PreparedAudioPlaybackItem {
-        var assetOptions: [String: Any] = [
-            AVURLAssetPreferPreciseDurationAndTimingKey: true
-        ]
-        if !source.httpHeaders.isEmpty {
-            assetOptions["AVURLAssetHTTPHeaderFieldsKey"] =
-                source.httpHeaders
-        }
         let asset = AVURLAsset(
             url: source.url,
-            options: assetOptions
+            options:
+                source.httpHeaders.isEmpty
+                    ? nil
+                    : [
+                        "AVURLAssetHTTPHeaderFieldsKey":
+                            source.httpHeaders
+                    ]
         )
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration =
@@ -70,5 +69,9 @@ final class AudioPlaybackItemFactory {
         equalizerProcessor.update(
             configuration: configuration
         )
+    }
+
+    func spectrumSnapshot() -> PlaybackAudioSpectrumSnapshot {
+        equalizerProcessor.spectrumSnapshot()
     }
 }

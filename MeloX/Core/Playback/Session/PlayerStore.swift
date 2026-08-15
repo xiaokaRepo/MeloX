@@ -64,6 +64,10 @@ final class PlayerStore {
     private(set) var effectivePlaybackQuality: MusicQuality?
     private(set) var sleepTimer: PlaybackSleepTimer
 
+    var currentAudioSpectrum: PlaybackAudioSpectrumSnapshot {
+        engine.audioSpectrumSnapshot
+    }
+
     var availablePlaybackQualities: [MusicQuality] {
         guard currentSong != nil else { return [] }
         guard !isResolvingCurrentSongAudioAvailability else { return [] }
@@ -168,6 +172,9 @@ final class PlayerStore {
 
     @ObservationIgnored
     private var loadGeneration = 0
+
+    @ObservationIgnored
+    private var activeEngineLoadGeneration: Int?
 
     @ObservationIgnored
     private var beatAnalysisGeneration = 0
@@ -549,13 +556,20 @@ final class PlayerStore {
     }
 
     func selectPlaybackQuality(_ quality: MusicQuality) {
-        guard settings.quality != quality else { return }
+        let currentQuality = api.isCellularData
+            ? settings.cellularQuality
+            : settings.quality
+        guard currentQuality != quality else { return }
         let shouldAutoplay = isPlaying
             || (isLoading && currentLoadShouldAutoplay)
         let resumePosition = engine.currentPlaybackTime
             ?? estimatedProgress()
         let songID = currentSong?.id
-        settings.quality = quality
+        if api.isCellularData {
+            settings.cellularQuality = quality
+        } else {
+            settings.quality = quality
+        }
         guard let songID else { return }
         seekRevision += 1
         let qualityChangeRevision = seekRevision
@@ -974,6 +988,24 @@ final class PlayerStore {
         }
     }
 
+    func resetAutoMixPreference() {
+        if let saved = listenTogetherSavedPlaybackOptions {
+            listenTogetherSavedPlaybackOptions =
+                ListenTogetherSavedPlaybackOptions(
+                    repeatMode: saved.repeatMode,
+                    wasShuffled: saved.wasShuffled,
+                    autoplayEnabled: saved.autoplayEnabled,
+                    autoMixEnabled: false
+                )
+            isAutoMixEnabled = false
+            cancelAutoMixPreparation()
+            persistSnapshot()
+            return
+        }
+
+        setAutoMixEnabled(false)
+    }
+
     func applyAutoMixSettings() {
         cancelAutoMixPreparation()
         persistSnapshot()
@@ -1016,6 +1048,7 @@ final class PlayerStore {
             nowPlayingLyrics = []
             publishedNowPlayingLyricID = nil
         }
+        activeEngineLoadGeneration = nil
         engine.unload()
         nowPlayingSession.setSong(
             song,
@@ -1046,6 +1079,7 @@ final class PlayerStore {
             effectivePlaybackQuality = source.quality
             let shouldAutoplay = currentLoadShouldAutoplay
             let resolvedStartPosition = estimatedProgress()
+            activeEngineLoadGeneration = generation
             await engine.load(
                 source,
                 startAt: resolvedStartPosition,
@@ -1067,10 +1101,13 @@ final class PlayerStore {
     private func resolvedPlaybackSource(
         for song: Song
     ) async throws -> PlaybackSource {
+        let requestedQuality = api.isCellularData
+            ? settings.cellularQuality
+            : settings.quality
         if song.gatewayReference != nil {
             guard let source = try await gateway.resolvePlaybackSource(
                 for: song,
-                quality: settings.quality
+                quality: requestedQuality
             ) else {
                 throw GatewayClientError.invalidConfiguration
             }
@@ -1079,7 +1116,7 @@ final class PlayerStore {
         do {
             if let source = try await gateway.resolvePlaybackSource(
                 for: song,
-                quality: settings.quality
+                quality: requestedQuality
             ) {
                 return source
             }
@@ -1104,7 +1141,14 @@ final class PlayerStore {
         await moveToNext(recordingCurrentPlayback: false)
     }
 
-    private func handleEngineFailure(_ error: Error) async {
+    private func handleEngineFailure(
+        _ error: Error,
+        engineLoadGeneration: Int?
+    ) async {
+        guard let engineLoadGeneration,
+              engineLoadGeneration == activeEngineLoadGeneration else {
+            return
+        }
         if let playbackError = error as? AudioPlaybackError,
            case .itemFailed = playbackError,
            isUsingDownloadedSource,
@@ -1140,6 +1184,7 @@ final class PlayerStore {
 
         if let playbackError = error as? AudioPlaybackError,
            case .itemFailed = playbackError {
+            activeEngineLoadGeneration = nil
             engine.unload()
         }
         persistSnapshot()
@@ -1203,8 +1248,12 @@ final class PlayerStore {
             }
         }
         engine.onFailure = { [weak self] error in
+            let engineLoadGeneration = self?.activeEngineLoadGeneration
             Task { @MainActor in
-                await self?.handleEngineFailure(error)
+                await self?.handleEngineFailure(
+                    error,
+                    engineLoadGeneration: engineLoadGeneration
+                )
             }
         }
         engine.onInterruptionBegan = { [weak self] in
@@ -1746,6 +1795,7 @@ final class PlayerStore {
 
         loadGeneration += 1
         let generation = loadGeneration
+        activeEngineLoadGeneration = generation
         currentSong = context.incomingSong
         resolveCurrentSongAudioAvailability(
             for: context.incomingSong,

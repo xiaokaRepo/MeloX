@@ -6,11 +6,12 @@ import Observation
 final class LyricsStore {
     private(set) var songID: Int?
     private(set) var lyrics: [LyricLine] = []
+    private(set) var source: LyricSource?
     private(set) var isLoading = false
     private(set) var errorMessage: String?
 
     @ObservationIgnored
-    private let api: NeteaseAPI
+    private let service: LyricsService
 
     @ObservationIgnored
     private let gateway: GatewayProviderStore
@@ -18,48 +19,56 @@ final class LyricsStore {
     @ObservationIgnored
     private var loadGeneration = 0
 
-    init(api: NeteaseAPI, gateway: GatewayProviderStore) {
-        self.api = api
+    init(
+        service: LyricsService,
+        gateway: GatewayProviderStore
+    ) {
+        self.service = service
         self.gateway = gateway
     }
 
     func load(for song: Song?) async {
         loadGeneration += 1
         let generation = loadGeneration
+
         songID = song?.id
         lyrics = []
+        source = nil
         errorMessage = nil
         isLoading = song != nil
+
         guard let song else { return }
 
         do {
-            do {
-                if let response = try await gateway.lyrics(for: song),
-                   response.status == "matched",
-                   let payload = response.lyrics {
-                    let loaded = LyricParser.parse(
-                        yrc: payload.yrc ?? "",
-                        lrc: payload.lrc ?? "",
-                        translatedLRC: payload.translationLRC ?? "",
-                        romanizedLRC: payload.romanizationLRC ?? ""
-                    )
-                    if !loaded.isEmpty {
-                        guard generation == loadGeneration else { return }
-                        lyrics = loaded
-                        isLoading = false
-                        return
-                    }
-                }
-            } catch {
-                if song.gatewayReference != nil { throw error }
+            if let gatewayLyrics = try await gatewayLyrics(for: song) {
+                guard generation == loadGeneration else { return }
+                lyrics = gatewayLyrics.lines
+                source = gatewayLyrics.source
+                isLoading = false
+                return
             }
             guard song.id > 0 else {
-                throw NSError(domain: "Lyrics", code: 1, userInfo: [NSLocalizedDescriptionKey: "当前歌曲暂无滚动歌词。"])
+                throw LyricSourceError.noLyrics
             }
-            let loadedLyrics = try await api.lyrics(id: song.id)
+            let loaded = try await service.load(
+                for: LyricsSongMetadata(song: song)
+            ) { [weak self] update in
+                guard let self, generation == self.loadGeneration else {
+                    return
+                }
+                self.lyrics = update.lines
+                self.source = update.source
+                self.errorMessage = nil
+                self.isLoading = false
+            }
+            try Task.checkCancellation()
             guard generation == loadGeneration else { return }
-            lyrics = loadedLyrics
-            errorMessage = loadedLyrics.isEmpty ? "当前歌曲暂无滚动歌词。" : nil
+
+            lyrics = loaded.lines
+            source = loaded.source
+            errorMessage = loaded.lines.isEmpty
+                ? "当前歌曲暂无滚动歌词。"
+                : nil
             isLoading = false
         } catch is CancellationError {
             return
@@ -70,33 +79,48 @@ final class LyricsStore {
         }
     }
 
-    func load(for songID: Int?) async {
-        loadGeneration += 1
-        let generation = loadGeneration
+    func fetch(for song: Song) async throws -> [LyricLine] {
+        if let gatewayLyrics = try await gatewayLyrics(for: song) {
+            return gatewayLyrics.lines
+        }
+        guard song.id > 0 else { throw LyricSourceError.noLyrics }
+        let resolved = try await service.load(
+            for: LyricsSongMetadata(song: song),
+            onUpdate: { _ in }
+        )
+        return resolved.lines
+    }
 
-        self.songID = songID
-        lyrics = []
-        errorMessage = nil
-        isLoading = songID != nil
-
-        guard let songID else { return }
-
+    private func gatewayLyrics(
+        for song: Song
+    ) async throws -> ResolvedLyrics? {
         do {
-            let loadedLyrics = try await api.lyrics(id: songID)
-            try Task.checkCancellation()
-            guard generation == loadGeneration else { return }
-
-            lyrics = loadedLyrics
-            errorMessage = loadedLyrics.isEmpty
-                ? "当前歌曲暂无滚动歌词。"
-                : nil
-            isLoading = false
+            guard let response = try await gateway.lyrics(for: song),
+                  response.status == "matched",
+                  let payload = response.lyrics else {
+                return nil
+            }
+            let lines = LyricParser.parse(
+                yrc: payload.yrc ?? "",
+                lrc: payload.lrc ?? "",
+                translatedLRC: payload.translationLRC ?? "",
+                romanizedLRC: payload.romanizationLRC ?? ""
+            )
+            guard !lines.isEmpty else { return nil }
+            return ResolvedLyrics(
+                source: .gateway,
+                quality:
+                    payload.yrc?.isEmpty == false
+                        ? .neteaseVerbatim
+                        : .neteaseLineSynchronized,
+                lines: lines,
+                isPureMusic: false
+            )
         } catch is CancellationError {
-            return
+            throw CancellationError()
         } catch {
-            guard generation == loadGeneration else { return }
-            errorMessage = error.localizedDescription
-            isLoading = false
+            if song.gatewayReference != nil { throw error }
+            return nil
         }
     }
 }
