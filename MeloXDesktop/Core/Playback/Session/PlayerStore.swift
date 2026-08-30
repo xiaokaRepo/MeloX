@@ -632,8 +632,9 @@ final class PlayerStore {
 
     func clearUpcomingQueue() {
         cancelAutoMixPreparation()
-        playbackQueue.keepCurrentSongOnly()
+        playbackQueue.clearUpcoming()
         persistSnapshot()
+        prepareAutoMixIfNeeded()
     }
 
     var upcomingQueueEntries: [(queueIndex: Int, song: Song)] {
@@ -641,6 +642,18 @@ final class PlayerStore {
             guard queue.indices.contains(index) else { return nil }
             return (index, queue[index])
         }
+    }
+
+    var historyQueueEntries: [(queueIndex: Int, song: Song)] {
+        playbackQueue.historyIndices().compactMap { index in
+            guard queue.indices.contains(index) else { return nil }
+            return (index, queue[index])
+        }
+    }
+
+    func clearPlaybackHistory() {
+        playbackQueue.clearHistory()
+        persistSnapshot()
     }
 
     func removeFromPlaybackQueue(at index: Int) {
@@ -929,19 +942,22 @@ final class PlayerStore {
     }
 
     func cycleRepeatMode() {
-        guard !isListenTogetherSessionActive else { return }
-        cancelAutoMixPreparation()
         switch repeatMode {
         case .off:
-            repeatMode = .all
-            queueModeIndicator = .repeatAll
+            setRepeatMode(.all)
         case .all:
-            repeatMode = .one
-            queueModeIndicator = .repeatOne
+            setRepeatMode(.one)
         case .one:
-            repeatMode = .off
-            updateQueueModeIndicator()
+            setRepeatMode(.off)
         }
+    }
+
+    func setRepeatMode(_ mode: RepeatMode) {
+        guard !isListenTogetherSessionActive,
+              repeatMode != mode else { return }
+        cancelAutoMixPreparation()
+        repeatMode = mode
+        updateQueueModeIndicator()
         persistSnapshot()
     }
 
@@ -1269,6 +1285,9 @@ final class PlayerStore {
         }
         nowPlayingSession.onPause = { [weak self] in
             self?.engine.pause()
+        }
+        nowPlayingSession.onTogglePlayPause = { [weak self] in
+            self?.togglePlayback()
         }
         nowPlayingSession.onNext = { [weak self] in
             Task { @MainActor in await self?.next() }

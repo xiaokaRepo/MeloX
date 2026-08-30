@@ -78,7 +78,8 @@ nonisolated struct Artist: Codable, Hashable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(Int.self, forKey: .id) ?? 0
-        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "未知歌手"
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+            ?? L10n.string("ui.metadata.unknown_artist")
         picURL = try container.decodeIfPresent(String.self, forKey: .picUrl)
         avatarURL = try container.decodeIfPresent(String.self, forKey: .img1v1Url)
         aliases = try container.decodeIfPresent([String].self, forKey: .alias) ?? []
@@ -111,7 +112,10 @@ nonisolated struct Album: Codable, Hashable, Identifiable {
     }
 
     var artistText: String {
-        artists.map(\.name).joined(separator: " / ")
+        L10n.joined(
+            artists.map(\.name),
+            separatorKey: "ui.common.artist_separator"
+        )
     }
 
     enum CodingKeys: String, CodingKey {
@@ -145,7 +149,8 @@ nonisolated struct Album: Codable, Hashable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(Int.self, forKey: .id) ?? 0
-        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "未知专辑"
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+            ?? L10n.string("ui.metadata.unknown_album")
         picURL = try container.decodeIfPresent(String.self, forKey: .picUrl)
             ?? container.decodeIfPresent(String.self, forKey: .blurPicUrl)
         picID = try Self.decodePicID(from: container)
@@ -217,7 +222,10 @@ nonisolated struct Song: Codable, Hashable, Identifiable {
     let gatewayReferences: [GatewayTrackReference]
 
     var artistText: String {
-        artists.map(\.name).joined(separator: " / ")
+        L10n.joined(
+            artists.map(\.name),
+            separatorKey: "ui.common.artist_separator"
+        )
     }
 
     var durationText: String {
@@ -281,7 +289,8 @@ nonisolated struct Song: Codable, Hashable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(Int.self, forKey: .id) ?? 0
-        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "未知歌曲"
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+            ?? L10n.string("ui.metadata.unknown_song")
         artists = try container.decodeIfPresent([Artist].self, forKey: .ar)
             ?? container.decodeIfPresent([Artist].self, forKey: .artists)
             ?? []
@@ -348,7 +357,10 @@ struct UserSummary: Codable, Hashable {
         case nickname
     }
 
-    init(userID: Int = 0, nickname: String = "网易云音乐") {
+    init(
+        userID: Int = 0,
+        nickname: String = L10n.string("ui.service.netease")
+    ) {
         self.userID = userID
         self.nickname = nickname
     }
@@ -356,7 +368,8 @@ struct UserSummary: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         userID = try container.decodeIfPresent(Int.self, forKey: .userID) ?? 0
-        nickname = try container.decodeIfPresent(String.self, forKey: .nickname) ?? "网易云音乐"
+        nickname = try container.decodeIfPresent(String.self, forKey: .nickname)
+            ?? L10n.string("ui.service.netease")
     }
 }
 
@@ -426,7 +439,8 @@ struct Playlist: Codable, Hashable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(Int.self, forKey: .id) ?? 0
-        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "未知歌单"
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+            ?? L10n.string("ui.metadata.unknown_playlist")
         coverURLString = try container.decodeIfPresent(String.self, forKey: .coverImgUrl)
             ?? container.decodeIfPresent(String.self, forKey: .picUrl)
         playlistDescription = try container.decodeIfPresent(String.self, forKey: .description)

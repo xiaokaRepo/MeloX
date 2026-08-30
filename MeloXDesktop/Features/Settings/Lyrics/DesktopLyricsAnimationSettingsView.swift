@@ -5,12 +5,13 @@ struct DesktopLyricsAnimationSettingsView: View {
 
     var body: some View {
         @Bindable var settings = model.settings
+        @Bindable var appleMusicLyrics = model.settings.appleMusicLyrics
 
         ScrollView {
             Form {
-                Section("性能") {
+                Section("ui.settings.lyrics.animation.section.performance") {
                     Picker(
-                        "刷新频率",
+                        "ui.settings.lyrics.animation.refresh_rate",
                         selection: $settings.lyricsRefreshRate
                     ) {
                         ForEach(LyricsRefreshRate.allCases) { rate in
@@ -19,227 +20,158 @@ struct DesktopLyricsAnimationSettingsView: View {
                     }
                 }
 
-                Section("移动与追赶") {
-                    HStack {
-                        Text("基础拖尾延迟")
-                        Slider(
-                            value: $settings.lyricsFocusCascadeDelay,
-                            in: AppSettings.lyricsFocusCascadeDelayRange,
-                            step: 0.001
-                        )
-                        Text(
-                            "\(Int((settings.lyricsFocusCascadeDelay * 1_000).rounded())) ms"
-                        )
-                        .monospacedDigit()
-                        .frame(width: 62, alignment: .trailing)
+                if appleMusicLyrics.usesAppleMusic26Motion {
+                    Section("ui.settings.lyrics.animation.section.apple_music_parameters") {
+                        LabeledContent("ui.settings.lyrics.animation.forward_line_delay", value: L10n.format("ui.common.milliseconds", 50))
+                        LabeledContent("ui.settings.lyrics.animation.reverse_line_delay", value: L10n.format("ui.common.milliseconds", 25))
+                        LabeledContent("ui.desktop.lyrics.animation.first_two_lines", value: L10n.string("ui.desktop.lyrics.animation.start_together"))
+                        LabeledContent("ui.settings.lyrics.animation.line_change_spring", value: "1 / 100 / 18")
+                        LabeledContent("ui.settings.lyrics.animation.precise_word_line", value: L10n.string("ui.settings.lyrics.animation.dynamic_line_interval"))
+                        LabeledContent("ui.desktop.lyrics.animation.highlight_prestart", value: L10n.format("ui.common.milliseconds", 100))
+                        LabeledContent("ui.desktop.lyrics.animation.focus_blur_transition", value: L10n.format("ui.common.milliseconds", 120))
+
+                        Text("ui.settings.lyrics.animation.apple_music.footer")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-
-                    HStack {
-                        Text("逐句拖尾增量")
-                        Slider(
-                            value:
-                                $settings.lyricsFocusCascadeDelayIncrease,
-                            in:
-                                AppSettings
-                                    .lyricsFocusCascadeDelayIncreaseRange,
-                            step: 0.001
-                        )
-                        Text(
-                            "\(Int((settings.lyricsFocusCascadeDelayIncrease * 1_000).rounded())) ms"
-                        )
-                        .monospacedDigit()
-                        .frame(width: 62, alignment: .trailing)
-                    }
-
-                    HStack {
-                        Text("后续歌词启动延迟")
-                        Slider(
-                            value:
-                                $settings
-                                    .lyricsFocusCascadeFollowingDelay,
-                            in:
-                                AppSettings
-                                    .lyricsFocusCascadeFollowingDelayRange,
-                            step: 0.001
-                        )
-                        Text(
-                            "\(Int((settings.lyricsFocusCascadeFollowingDelay * 1_000).rounded())) ms"
-                        )
-                        .monospacedDigit()
-                        .frame(width: 62, alignment: .trailing)
-                    }
-
-                    HStack {
-                        Text("拖尾追赶节奏")
-                        Slider(
-                            value:
-                                $settings.lyricsFocusCascadeCatchUpRatio,
-                            in:
-                                AppSettings
-                                    .lyricsFocusCascadeCatchUpRatioRange,
-                            step: 0.01
-                        )
-                        Text(
-                            "\(Int((settings.lyricsFocusCascadeCatchUpRatio * 100).rounded()))%"
-                        )
-                        .monospacedDigit()
-                        .frame(width: 48, alignment: .trailing)
-                    }
-
-                    HStack {
-                        Text("追赶速度梯度")
-                        Slider(
-                            value:
-                                $settings
-                                    .lyricsFocusCascadeChaseSpeedGradient,
-                            in:
-                                AppSettings
-                                    .lyricsFocusCascadeChaseSpeedGradientRange,
-                            step: 0.01
-                        )
-                        Text(
-                            "\(Int((settings.lyricsFocusCascadeChaseSpeedGradient * 100).rounded()))%"
-                        )
-                        .monospacedDigit()
-                        .frame(width: 48, alignment: .trailing)
-                    }
-
-                    HStack {
-                        Text("位移收束时长")
-                        Slider(
-                            value:
-                                $settings.lyricsFocusCascadeDuration,
-                            in:
-                                AppSettings
-                                    .lyricsFocusCascadeDurationRange,
-                            step: 0.01
-                        )
-                        Text(
-                            "\(settings.lyricsFocusCascadeDuration, specifier: "%.2f") s"
-                        )
-                        .monospacedDigit()
-                        .frame(width: 62, alignment: .trailing)
-                    }
-
-                    HStack {
-                        Text("瞬移阈值")
-                        Slider(
-                            value: $settings.lyricsFocusSnapThreshold,
-                            in: AppSettings.lyricsFocusSnapThresholdRange,
-                            step: 0.001
-                        )
-                        Text(
-                            "\(Int((settings.lyricsFocusSnapThreshold * 1_000).rounded())) ms"
-                        )
-                        .monospacedDigit()
-                        .frame(width: 62, alignment: .trailing)
-                    }
-                }
-
-                Section("回弹与焦点") {
-                    Toggle(
-                        "启用位移回弹",
-                        isOn:
-                            $settings.lyricsFocusCascadeBounceEnabled
-                    )
-                    if settings.lyricsFocusCascadeBounceEnabled {
-                        HStack {
-                            Text("最大回弹弹性")
-                            Slider(
-                                value:
-                                    $settings.lyricsFocusCascadeBounce,
-                                in:
-                                    AppSettings
-                                        .lyricsFocusCascadeBounceRange,
-                                step: 0.01
-                            )
-                            Text(
-                                "\(Int((settings.lyricsFocusCascadeBounce * 100).rounded()))%"
-                            )
-                            .monospacedDigit()
-                            .frame(width: 48, alignment: .trailing)
-                        }
-
-                        HStack {
-                            Text("回弹强度梯度")
-                            Slider(
-                                value:
-                                    $settings
-                                        .lyricsFocusCascadeBounceGradient,
-                                in:
-                                    AppSettings
-                                        .lyricsFocusCascadeBounceGradientRange,
-                                step: 0.01
-                            )
-                            Text(
-                                "\(Int((settings.lyricsFocusCascadeBounceGradient * 100).rounded()))%"
-                            )
-                            .monospacedDigit()
-                            .frame(width: 48, alignment: .trailing)
-                        }
-                    }
-
-                    Toggle(
-                        "启用当前句回弹",
-                        isOn: $settings.lyricsFocusScaleBounceEnabled
-                    )
-                    if settings.lyricsFocusScaleBounceEnabled {
-                        HStack {
-                            Text("当前句回弹时长")
-                            Slider(
-                                value:
-                                    $settings
-                                        .lyricsFocusScaleBounceDuration,
-                                in:
-                                    AppSettings
-                                        .lyricsFocusScaleBounceDurationRange,
-                                step: 0.01
-                            )
-                            Text(
-                                "\(settings.lyricsFocusScaleBounceDuration, specifier: "%.2f") s"
-                            )
-                            .monospacedDigit()
-                            .frame(width: 62, alignment: .trailing)
-                        }
-
-                        HStack {
-                            Text("当前句回弹弹性")
-                            Slider(
-                                value:
-                                    $settings.lyricsFocusScaleBounce,
-                                in:
-                                    AppSettings
-                                        .lyricsFocusScaleBounceRange,
-                                step: 0.01
-                            )
-                            Text(
-                                "\(Int((settings.lyricsFocusScaleBounce * 100).rounded()))%"
-                            )
-                            .monospacedDigit()
-                            .frame(width: 48, alignment: .trailing)
-                        }
-                    }
-
-                    HStack {
-                        Text("焦点颜色提前")
-                        Slider(
-                            value: $settings.lyricsFocusColorLeadTime,
-                            in:
-                                AppSettings
-                                    .lyricsFocusColorLeadTimeRange,
-                            step: 0.005
-                        )
-                        Text(
-                            "\(Int((settings.lyricsFocusColorLeadTime * 1_000).rounded())) ms"
-                        )
-                        .monospacedDigit()
-                        .frame(width: 68, alignment: .trailing)
-                    }
+                } else {
+                    customMovementSection(settings: settings)
+                    customBounceSection(settings: settings)
                 }
             }
             .formStyle(.columns)
             .padding()
         }
         .scrollIndicators(.automatic)
+    }
+
+    @ViewBuilder
+    private func customMovementSection(settings: AppSettings) -> some View {
+        @Bindable var settings = settings
+
+        Section("ui.settings.lyrics.animation.section.movement") {
+            valueSlider(
+                title: L10n.string("ui.settings.lyrics.animation.base_cascade_delay"),
+                value: $settings.lyricsFocusCascadeDelay,
+                range: AppSettings.lyricsFocusCascadeDelayRange,
+                step: 0.001,
+                valueText: L10n.format("ui.common.milliseconds", Int((settings.lyricsFocusCascadeDelay * 1_000).rounded()))
+            )
+            valueSlider(
+                title: L10n.string("ui.settings.lyrics.animation.cascade_increment"),
+                value: $settings.lyricsFocusCascadeDelayIncrease,
+                range: AppSettings.lyricsFocusCascadeDelayIncreaseRange,
+                step: 0.001,
+                valueText: L10n.format("ui.common.milliseconds", Int((settings.lyricsFocusCascadeDelayIncrease * 1_000).rounded()))
+            )
+            valueSlider(
+                title: L10n.string("ui.settings.lyrics.animation.following_delay"),
+                value: $settings.lyricsFocusCascadeFollowingDelay,
+                range: AppSettings.lyricsFocusCascadeFollowingDelayRange,
+                step: 0.001,
+                valueText: L10n.format("ui.common.milliseconds", Int((settings.lyricsFocusCascadeFollowingDelay * 1_000).rounded()))
+            )
+            valueSlider(
+                title: L10n.string("ui.settings.lyrics.animation.catch_up_ratio"),
+                value: $settings.lyricsFocusCascadeCatchUpRatio,
+                range: AppSettings.lyricsFocusCascadeCatchUpRatioRange,
+                step: 0.01,
+                valueText: L10n.percent(settings.lyricsFocusCascadeCatchUpRatio)
+            )
+            valueSlider(
+                title: L10n.string("ui.settings.lyrics.animation.chase_speed_gradient"),
+                value: $settings.lyricsFocusCascadeChaseSpeedGradient,
+                range: AppSettings.lyricsFocusCascadeChaseSpeedGradientRange,
+                step: 0.01,
+                valueText: L10n.percent(settings.lyricsFocusCascadeChaseSpeedGradient)
+            )
+            valueSlider(
+                title: L10n.string("ui.settings.lyrics.animation.settle_duration"),
+                value: $settings.lyricsFocusCascadeDuration,
+                range: AppSettings.lyricsFocusCascadeDurationRange,
+                step: 0.01,
+                valueText: L10n.format("ui.common.seconds_two_decimals", settings.lyricsFocusCascadeDuration)
+            )
+            valueSlider(
+                title: L10n.string("ui.settings.lyrics.animation.snap_threshold"),
+                value: $settings.lyricsFocusSnapThreshold,
+                range: AppSettings.lyricsFocusSnapThresholdRange,
+                step: 0.001,
+                valueText: L10n.format("ui.common.milliseconds", Int((settings.lyricsFocusSnapThreshold * 1_000).rounded()))
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func customBounceSection(settings: AppSettings) -> some View {
+        @Bindable var settings = settings
+
+        Section("ui.settings.lyrics.animation.section.bounce_focus") {
+            Toggle(
+                "ui.settings.lyrics.animation.enable_movement_bounce",
+                isOn: $settings.lyricsFocusCascadeBounceEnabled
+            )
+            if settings.lyricsFocusCascadeBounceEnabled {
+                valueSlider(
+                    title: L10n.string("ui.settings.lyrics.animation.maximum_bounce"),
+                    value: $settings.lyricsFocusCascadeBounce,
+                    range: AppSettings.lyricsFocusCascadeBounceRange,
+                    step: 0.01,
+                    valueText: L10n.percent(settings.lyricsFocusCascadeBounce)
+                )
+                valueSlider(
+                    title: L10n.string("ui.settings.lyrics.animation.bounce_gradient"),
+                    value: $settings.lyricsFocusCascadeBounceGradient,
+                    range: AppSettings.lyricsFocusCascadeBounceGradientRange,
+                    step: 0.01,
+                    valueText: L10n.percent(settings.lyricsFocusCascadeBounceGradient)
+                )
+            }
+
+            Toggle(
+                "ui.settings.lyrics.animation.enable_scale_bounce",
+                isOn: $settings.lyricsFocusScaleBounceEnabled
+            )
+            if settings.lyricsFocusScaleBounceEnabled {
+                valueSlider(
+                    title: L10n.string("ui.settings.lyrics.animation.scale_bounce_duration"),
+                    value: $settings.lyricsFocusScaleBounceDuration,
+                    range: AppSettings.lyricsFocusScaleBounceDurationRange,
+                    step: 0.01,
+                    valueText: L10n.format("ui.common.seconds_two_decimals", settings.lyricsFocusScaleBounceDuration)
+                )
+                valueSlider(
+                    title: L10n.string("ui.settings.lyrics.animation.scale_bounce_elasticity"),
+                    value: $settings.lyricsFocusScaleBounce,
+                    range: AppSettings.lyricsFocusScaleBounceRange,
+                    step: 0.01,
+                    valueText: L10n.percent(settings.lyricsFocusScaleBounce)
+                )
+            }
+
+            valueSlider(
+                title: L10n.string("ui.settings.lyrics.animation.focus_color_lead"),
+                value: $settings.lyricsFocusColorLeadTime,
+                range: AppSettings.lyricsFocusColorLeadTimeRange,
+                step: 0.005,
+                valueText: L10n.format("ui.common.milliseconds", Int((settings.lyricsFocusColorLeadTime * 1_000).rounded()))
+            )
+        }
+    }
+
+    private func valueSlider(
+        title: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double,
+        valueText: String
+    ) -> some View {
+        HStack {
+            Text(title)
+            Slider(value: value, in: range, step: step)
+            Text(valueText)
+                .monospacedDigit()
+                .frame(width: 68, alignment: .trailing)
+        }
     }
 }

@@ -6,6 +6,7 @@ import MediaPlayer
 final class NowPlayingSession {
     var onPlay: (() -> Void)?
     var onPause: (() -> Void)?
+    var onTogglePlayPause: (() -> Void)?
     var onNext: (() -> Void)?
     var onPrevious: (() -> Void)?
     var onSeek: ((TimeInterval) -> Void)?
@@ -42,6 +43,7 @@ final class NowPlayingSession {
         lyricsDisplaySettings: NowPlayingLyricsDisplaySettings
     ) {
         representedSongID = song.id
+        setPlaybackCommandsEnabled(true)
         artworkTask?.cancel()
         let metadata = NowPlayingLyricsFormatter.metadata(
             songTitle: song.name,
@@ -117,8 +119,6 @@ final class NowPlayingSession {
         nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         nowPlayingCenter.nowPlayingInfo = nowPlayingInfo
         nowPlayingCenter.playbackState = isPlaying ? .playing : .paused
-        commandCenter.playCommand.isEnabled = !isPlaying
-        commandCenter.pauseCommand.isEnabled = isPlaying
     }
 
     func clear() {
@@ -128,12 +128,11 @@ final class NowPlayingSession {
         nowPlayingInfo = [:]
         nowPlayingCenter.nowPlayingInfo = nil
         nowPlayingCenter.playbackState = .stopped
+        setPlaybackCommandsEnabled(false)
     }
 
     private func installRemoteCommands() {
-        commandCenter.playCommand.isEnabled = true
-        commandCenter.pauseCommand.isEnabled = false
-        commandCenter.togglePlayPauseCommand.isEnabled = false
+        setPlaybackCommandsEnabled(false)
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.isEnabled = true
@@ -154,6 +153,10 @@ final class NowPlayingSession {
             Task { @MainActor in self?.onPause?() }
             return .success
         }
+        addTarget(to: commandCenter.togglePlayPauseCommand) { [weak self] _ in
+            Task { @MainActor in self?.onTogglePlayPause?() }
+            return .success
+        }
         addTarget(to: commandCenter.nextTrackCommand) { [weak self] _ in
             Task { @MainActor in self?.onNext?() }
             return .success
@@ -170,6 +173,14 @@ final class NowPlayingSession {
             Task { @MainActor in self?.onSeek?(position) }
             return .success
         }
+    }
+
+    private func setPlaybackCommandsEnabled(_ isEnabled: Bool) {
+        // Availability describes supported actions. The current transport
+        // state is published separately through MPNowPlayingInfoCenter.
+        commandCenter.playCommand.isEnabled = isEnabled
+        commandCenter.pauseCommand.isEnabled = isEnabled
+        commandCenter.togglePlayPauseCommand.isEnabled = isEnabled
     }
 
     private func addTarget(

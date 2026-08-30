@@ -99,6 +99,7 @@ struct MeloXApp: App {
                 .environment(releaseNotes)
                 .environment(gateway)
                 .environment(\.effectiveLyricsRefreshRate, effectiveLyricsRefreshRate)
+                .environment(\.locale, settings.appLanguage.locale)
                 .tint(.red)
                 .preferredColorScheme(
                     settings.appearance.preferredColorScheme

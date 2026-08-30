@@ -15,12 +15,12 @@ enum AudioPlaybackError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .audioSession(let error):
-            "无法启用音频播放：\(error.localizedDescription)"
+            L10n.format("ui.error.playback.enable_failed", error.localizedDescription)
         case .itemFailed(let error):
             if let error {
-                "音源载入失败：\(error.localizedDescription)"
+                L10n.format("ui.error.playback.audio_source_failed", error.localizedDescription)
             } else {
-                "音源载入失败，请稍后重试。"
+                L10n.string("ui.error.playback.audio_source_retry")
             }
         }
     }
@@ -39,7 +39,7 @@ final class AudioPlaybackEngine {
     var onAutoMixTransitionProgress: ((Double) -> Void)?
     var onAutoMixTransitionCompleted: ((Int) -> Void)?
     var onAutoMixPreparationFailed: ((Int, Error) -> Void)?
-    var onInterruptionBegan: (() -> Void)?
+    var onInterruptionBegan: ((_ routeDisconnected: Bool) -> Void)?
     var onInterruptionEnded: ((Bool) -> Void)?
     var onOutputDeviceDisconnected: (() -> Void)?
 
@@ -86,6 +86,11 @@ final class AudioPlaybackEngine {
 
     var expectsPlaybackToContinue: Bool {
         wantsPlayback
+    }
+
+    private var isActivelyPlaying: Bool {
+        state == .playing
+            || activeDeck.player.timeControlStatus == .playing
     }
 
     var nowPlayingPlayers: [AVPlayer] {
@@ -702,7 +707,17 @@ final class AudioPlaybackEngine {
         }
         switch type {
         case .began:
-            onInterruptionBegan?()
+            // Audio-session notifications can arrive while an item is still
+            // loading. Do not turn an in-flight autoplay request into a
+            // pause before AVPlayer has actually started playback.
+            guard isActivelyPlaying else { return }
+            let rawReason = notification.userInfo?[
+                AVAudioSessionInterruptionReasonKey
+            ] as? UInt
+            let reason = rawReason.flatMap {
+                AVAudioSession.InterruptionReason(rawValue: $0)
+            }
+            onInterruptionBegan?(reason == .routeDisconnected)
         case .ended:
             let rawOptions = notification.userInfo?[
                 AVAudioSessionInterruptionOptionKey
@@ -725,7 +740,8 @@ final class AudioPlaybackEngine {
         ] as? UInt,
               AVAudioSession.RouteChangeReason(
                 rawValue: rawReason
-              ) == .oldDeviceUnavailable else {
+              ) == .oldDeviceUnavailable,
+              isActivelyPlaying else {
             return
         }
         pause()

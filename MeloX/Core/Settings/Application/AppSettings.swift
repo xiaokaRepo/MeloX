@@ -15,14 +15,30 @@ final class AppSettings {
     static let defaultStartsHeartModeOnLaunch = false
     static let defaultRecognizesClipboardLinksOnLaunch = false
     static let defaultSystemNowPlayingLyricsEnabled = true
-    static let defaultSystemNowPlayingLyricsTitleFormat = "{歌词}"
-    static let defaultSystemNowPlayingLyricsSubtitleFormat =
-        "{歌名} · {作者}"
+    static var defaultSystemNowPlayingLyricsTitleFormat: String {
+        L10n.string("ui.lyrics.format.token.lyrics")
+    }
+    static var defaultSystemNowPlayingLyricsSubtitleFormat: String {
+        L10n.format(
+            "ui.lyrics.format.default.title_artist",
+            L10n.string("ui.lyrics.format.token.title"),
+            L10n.string("ui.lyrics.format.token.artist")
+        )
+    }
     static let defaultLyricsLiveActivityEnabled = false
-    static let defaultLyricsLiveActivityTitleFormat = "{歌词}"
-    static let defaultLyricsLiveActivitySubtitleFormat =
-        "{歌名} · {作者}"
-    static let defaultLyricsLiveActivityCompactFormat = "{歌词}"
+    static var defaultLyricsLiveActivityTitleFormat: String {
+        L10n.string("ui.lyrics.format.token.lyrics")
+    }
+    static var defaultLyricsLiveActivitySubtitleFormat: String {
+        L10n.format(
+            "ui.lyrics.format.default.title_artist",
+            L10n.string("ui.lyrics.format.token.title"),
+            L10n.string("ui.lyrics.format.token.artist")
+        )
+    }
+    static var defaultLyricsLiveActivityCompactFormat: String {
+        L10n.string("ui.lyrics.format.token.lyrics")
+    }
     static let defaultLyricsLiveActivityShowsArtwork = true
     static let defaultLyricsLiveActivityShowsNextLyric = true
     static let defaultLyricsLiveActivityShowsProgress = true
@@ -82,6 +98,7 @@ final class AppSettings {
     static let defaultLyricsTranslationFontScale = 0.65
     static let defaultLyricsTranslationOpacity = 0.9
     static let defaultLyricsLiftMode: LyricsLiftMode = .character
+    static let defaultLyricsSourcePreference: LyricSourcePreference = .automatic
     static let defaultLyricsLongSyllableDetectionMode:
         LyricsLongSyllableDetectionMode = .character
     static let defaultLyricsGlowLongSyllablesOnly = true
@@ -127,6 +144,7 @@ final class AppSettings {
             "lyricsLiveActivityScrollSpeed"
         static let lyricsLiveActivityScrollPause =
             "lyricsLiveActivityScrollPause"
+        static let appLanguage = AppLanguage.storageKey
         static let appearance = "appAppearance"
         static let defaultLaunchTab = "defaultLaunchTab"
         static let restoresLastSelectedTab = "restoresLastSelectedTab"
@@ -173,6 +191,7 @@ final class AppSettings {
         static let lyricsDuetLayoutEnabled = "lyricsDuetLayoutEnabled"
         static let lyricsAMLLSourceEnabled = "lyricsAMLLSourceEnabled"
         static let lyricsQQMusicSourceEnabled = "lyricsQQMusicSourceEnabled"
+        static let lyricsSourcePreference = "lyricsSourcePreference"
         static let lyricsLiftMode = "lyricsLiftMode"
         static let lyricsHighlightGradientWidth =
             "lyricsHighlightGradientWidth"
@@ -403,6 +422,8 @@ final class AppSettings {
             )
         }
     }
+
+    private(set) var appLanguage: AppLanguage
 
     var appearance: AppAppearance {
         didSet {
@@ -846,6 +867,15 @@ final class AppSettings {
         }
     }
 
+    var lyricsSourcePreference: LyricSourcePreference {
+        didSet {
+            defaults.set(
+                lyricsSourcePreference.rawValue,
+                forKey: Key.lyricsSourcePreference
+            )
+        }
+    }
+
     var lyricsLiftMode: LyricsLiftMode {
         didSet {
             defaults.set(
@@ -1264,6 +1294,11 @@ final class AppSettings {
         hasCompletedOnboarding = defaults.bool(
             forKey: Key.hasCompletedOnboarding
         )
+        let storedAppLanguage = AppLanguage(
+            rawValue: defaults.string(forKey: Key.appLanguage) ?? ""
+        ) ?? .system
+        appLanguage = storedAppLanguage
+        L10n.activate(storedAppLanguage)
         cookie = defaults.string(forKey: Key.cookie) ?? ""
         quality = MusicQuality(rawValue: defaults.string(forKey: Key.quality) ?? "") ?? .high
         cellularQuality = MusicQuality(
@@ -1486,6 +1521,11 @@ final class AppSettings {
         lyricsQQMusicSourceEnabled = defaults.object(
             forKey: Key.lyricsQQMusicSourceEnabled
         ) as? Bool ?? true
+        lyricsSourcePreference = LyricSourcePreference(
+            rawValue: defaults.string(
+                forKey: Key.lyricsSourcePreference
+            ) ?? ""
+        ) ?? Self.defaultLyricsSourcePreference
         lyricsLiftMode = LyricsLiftMode(
             rawValue: defaults.string(forKey: Key.lyricsLiftMode) ?? ""
         ) ?? Self.defaultLyricsLiftMode
@@ -1753,6 +1793,13 @@ final class AppSettings {
         normalizeNavigationSelections()
     }
 
+    func setAppLanguage(_ language: AppLanguage) {
+        guard appLanguage != language else { return }
+        L10n.activate(language)
+        defaults.set(language.rawValue, forKey: Key.appLanguage)
+        appLanguage = language
+    }
+
     private func normalizeNavigationSelections() {
         defaultLaunchTab = normalizedNavigationTab(
             for: defaultLaunchTab
@@ -1960,6 +2007,7 @@ final class AppSettings {
         lyricsDuetLayoutEnabled = true
         lyricsAMLLSourceEnabled = true
         lyricsQQMusicSourceEnabled = true
+        lyricsSourcePreference = Self.defaultLyricsSourcePreference
         lyricsLiftMode = Self.defaultLyricsLiftMode
         lyricsHighlightGradientWidth =
             Self.defaultLyricsHighlightGradientWidth

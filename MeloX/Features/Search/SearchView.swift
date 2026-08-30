@@ -33,11 +33,11 @@ struct SearchView: View {
                 searchResults
             }
         }
-        .navigationTitle("搜索")
+        .navigationTitle("ui.navigation.search")
         .searchable(
             text: $query,
             placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "音乐内容或网易云链接"
+            prompt: "ui.search.prompt"
         )
         .searchScopes($scope) {
             ForEach(availableSearchKinds) { kind in
@@ -47,7 +47,9 @@ struct SearchView: View {
         .overlay {
             if !trimmedQuery.isEmpty, case .failed(let message) = phase {
                 ContentUnavailableView(
-                    recognizedLink == nil ? "搜索失败" : "无法打开链接",
+                    recognizedLink == nil
+                        ? L10n.string("ui.search.failed")
+                        : L10n.string("ui.search.link_failed"),
                     systemImage: recognizedLink == nil
                         ? "exclamationmark.magnifyingglass"
                         : "link.badge.plus",
@@ -68,17 +70,17 @@ struct SearchView: View {
             .presentationDragIndicator(.visible)
         }
         .alert(
-            "收藏失败",
+            "ui.error.favorite_failed",
             isPresented: Binding(
                 get: { library.errorMessage != nil },
                 set: { if !$0 { library.clearError() } }
             )
         ) {
-            Button("好", role: .cancel) {
+            Button("ui.common.ok", role: .cancel) {
                 library.clearError()
             }
         } message: {
-            Text(library.errorMessage ?? "未知错误")
+            Text(library.errorMessage ?? L10n.string("ui.common.unknown_error"))
         }
         .task(id: SearchRequest(query: query, kind: scope)) {
             let request = SearchRequest(query: query, kind: scope)
@@ -106,7 +108,7 @@ struct SearchView: View {
             if phase == .loading {
                 HStack {
                     Spacer()
-                    ProgressView("搜索中")
+                    ProgressView("ui.search.searching")
                     Spacer()
                 }
             }
@@ -191,7 +193,7 @@ struct SearchView: View {
                     NavigationLink(value: MusicRoute.playlist(playlist)) {
                         SearchMediaRow(
                             title: playlist.name,
-                            subtitle: "\(playlist.trackCount) 首歌曲",
+                            subtitle: L10n.format("ui.common.song_count", playlist.trackCount),
                             artworkURL: playlist.artworkURL,
                             circular: false
                         )
@@ -219,11 +221,11 @@ struct SearchView: View {
                 if phase == .loading {
                     HStack {
                         Spacer()
-                        ProgressView("正在读取歌曲链接")
+                        ProgressView("ui.search.reading_song_link")
                         Spacer()
                     }
                 } else if let linkedSong {
-                    Section("链接中的歌曲") {
+                    Section("ui.search.section.linked_song") {
                         NavigationLink(
                             value: MusicRoute.song(linkedSong)
                         ) {
@@ -242,11 +244,11 @@ struct SearchView: View {
 
         case .listenTogether(let invitation):
             ContentUnavailableView {
-                Label("一起听邀请", systemImage: "person.2.wave.2")
+                Label("ui.listen_together.invitation", systemImage: "person.2.wave.2")
             } description: {
-                Text("已识别网易云音乐一起听分享链接。")
+                Text("ui.search.listen_together_link_recognized")
             } actions: {
-                Button("查看邀请") {
+                Button("ui.clipboard.view_invitation") {
                     presentedListenTogetherLink = invitation
                 }
                 .buttonStyle(.borderedProminent)
@@ -368,7 +370,7 @@ struct SearchView: View {
                 try Task.checkCancellation()
                 guard let song = details.first else {
                     phase = .failed(
-                        "网易云音乐没有返回这首歌曲的信息。"
+                        L10n.string("ui.clipboard.error.song_not_found")
                     )
                     return
                 }

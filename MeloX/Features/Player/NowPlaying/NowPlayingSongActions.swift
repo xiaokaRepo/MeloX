@@ -59,18 +59,23 @@ struct NowPlayingSongActions: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            library.contains(song: song) ? "取消喜爱" : "喜爱"
+            library.contains(song: song)
+                ? L10n.string("ui.common.unfavorite")
+                : L10n.string("ui.common.favorite")
         )
     }
     private var songMenu: some View {
         Menu {
+            lyricsSourceMenu
+
+            Divider()
             Button {
                 presentedSheet = .sleepTimer
             } label: {
                 Label(
                     player.sleepTimer.isActive
-                        ? "定时关闭（已开启）"
-                        : "定时关闭",
+                        ? L10n.string("ui.sleep_timer.active")
+                        : L10n.string("ui.sleep_timer.title"),
                     systemImage: "timer"
                 )
             }
@@ -81,7 +86,7 @@ struct NowPlayingSongActions: View {
                     player.addToPlaybackQueue(song)
                 } label: {
                     Label(
-                        "添加到播放列表",
+                        "ui.player.add_to_queue",
                         systemImage: "text.badge.plus"
                     )
                 }
@@ -92,7 +97,7 @@ struct NowPlayingSongActions: View {
                         )
                     } label: {
                         Label(
-                            "前往播客：\(podcast.radioName)",
+                            L10n.format("ui.podcasts.go_to", podcast.radioName),
                             systemImage: "mic"
                         )
                     }
@@ -103,7 +108,7 @@ struct NowPlayingSongActions: View {
                         presentedSheet = .addToPlaylist(song)
                     } label: {
                         Label(
-                            "添加到歌单",
+                            "ui.playlists.add_to",
                             systemImage: "plus.circle"
                         )
                     }
@@ -112,8 +117,8 @@ struct NowPlayingSongActions: View {
                     } label: {
                         Label(
                             library.contains(song: song)
-                                ? "取消喜爱"
-                                : "喜爱",
+                                ? L10n.string("ui.common.unfavorite")
+                                : L10n.string("ui.common.favorite"),
                             systemImage: library.contains(song: song)
                                 ? "star.fill"
                                 : "star"
@@ -122,14 +127,14 @@ struct NowPlayingSongActions: View {
                     Menu {
                         NeteaseShareMenuContent(resource: .song(song))
                     } label: {
-                        Label("分享", systemImage: "square.and.arrow.up")
+                        Label("ui.common.share", systemImage: "square.and.arrow.up")
                     }
                 }
                 Button {
                     presentedSheet = .comments(song)
                 } label: {
                     Label(
-                        "查看评论",
+                        "ui.comments.view",
                         systemImage: "bubble.left.and.bubble.right"
                     )
                 }
@@ -137,7 +142,7 @@ struct NowPlayingSongActions: View {
                     presentedSheet = .songWiki(song)
                 } label: {
                     Label(
-                        "歌曲百科",
+                        "ui.song.wiki.title",
                         systemImage: "book.pages"
                     )
                 }
@@ -146,8 +151,8 @@ struct NowPlayingSongActions: View {
                 } label: {
                     Label(
                         listenTogether.isInRoom
-                            ? "一起听房间"
-                            : "发起一起听",
+                            ? L10n.string("ui.listen_together.room")
+                            : L10n.string("ui.listen_together.start"),
                         systemImage: "person.2.wave.2"
                     )
                 }
@@ -157,7 +162,7 @@ struct NowPlayingSongActions: View {
                     player.addToPlaybackQueue(song)
                 } label: {
                     Label(
-                        "添加到播放列表",
+                        "ui.player.add_to_queue",
                         systemImage: "text.badge.plus"
                     )
                 }
@@ -168,7 +173,7 @@ struct NowPlayingSongActions: View {
                         openMusicRoute(.album(album))
                     } label: {
                         Label(
-                            "前往专辑：\(album.name)",
+                            L10n.format("ui.album.go_to", album.name),
                             systemImage: "music.note.list"
                         )
                     }
@@ -178,7 +183,7 @@ struct NowPlayingSongActions: View {
                         openMusicRoute(.artist(artist.id))
                     } label: {
                         Label(
-                            "前往艺人：\(artist.name)",
+                            L10n.format("ui.artist.go_to", artist.name),
                             systemImage: "music.microphone"
                         )
                     }
@@ -192,7 +197,7 @@ struct NowPlayingSongActions: View {
                             }
                         }
                     } label: {
-                        Label("前往艺人", systemImage: "music.microphone")
+                        Label("ui.artist.go_to_generic", systemImage: "music.microphone")
                     }
                 }
                 if settings.beatNetDebugEnabled {
@@ -201,7 +206,7 @@ struct NowPlayingSongActions: View {
                         presentedSheet = .beatNetDebug
                     } label: {
                         Label(
-                            "BeatNet 调试",
+                            "ui.beatnet.debug.title",
                             systemImage: "waveform.path.ecg"
                         )
                     }
@@ -217,7 +222,29 @@ struct NowPlayingSongActions: View {
         }
         .tint(.white)
         .menuOrder(.fixed)
-        .accessibilityLabel("更多")
+        .accessibilityLabel("ui.common.more")
+    }
+
+    private var lyricsSourceMenu: some View {
+        Menu {
+            Picker(
+                "ui.settings.lyrics.content.default_source",
+                selection: Binding(
+                    get: { settings.lyricsSourcePreference },
+                    set: { settings.lyricsSourcePreference = $0 }
+                )
+            ) {
+                ForEach(LyricSourcePreference.allCases) { preference in
+                    Text(preference.title).tag(preference)
+                }
+            }
+        } label: {
+            Label(
+                "ui.settings.lyrics.content.default_source",
+                systemImage: "text.quote"
+            )
+        }
+        .accessibilityValue(settings.lyricsSourcePreference.title)
     }
 }
 private enum NowPlayingSongSheet: Identifiable {

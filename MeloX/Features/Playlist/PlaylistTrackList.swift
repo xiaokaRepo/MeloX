@@ -8,7 +8,7 @@ struct PlaylistTrackList: View {
 
     var body: some View {
         if tracks.isEmpty {
-            ContentUnavailableView("暂无歌曲", systemImage: "music.note.list")
+            ContentUnavailableView("ui.songs.empty", systemImage: "music.note.list")
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, minHeight: 180)
         } else {
@@ -129,12 +129,12 @@ private struct PlaylistTrackRow: View {
                 if downloads.isDownloading(songID: song.id) {
                     ProgressView()
                         .controlSize(.mini)
-                        .accessibilityLabel("正在下载")
+                        .accessibilityLabel("ui.downloads.downloading")
                 } else if downloads.contains(songID: song.id) {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .accessibilityLabel("已下载")
+                        .accessibilityLabel("ui.downloads.downloaded")
                 }
             }
 
@@ -144,7 +144,7 @@ private struct PlaylistTrackRow: View {
                         Task { await player.playNext(song) }
                     } label: {
                         Label(
-                            "下一首播放",
+                            "ui.player.play_next",
                             systemImage:
                                 "text.line.first.and.arrowtriangle.forward"
                         )
@@ -156,13 +156,13 @@ private struct PlaylistTrackRow: View {
                             Button {
                                 downloads.cancel(songID: song.id)
                             } label: {
-                                Label("取消下载", systemImage: "xmark.circle")
+                                Label("ui.downloads.cancel", systemImage: "xmark.circle")
                             }
                         } else if downloads.contains(songID: song.id) {
                             Button(role: .destructive) {
                                 downloads.remove(songID: song.id)
                             } label: {
-                                Label("删除下载", systemImage: "trash")
+                                Label("ui.downloads.delete", systemImage: "trash")
                             }
                         } else {
                             Menu {
@@ -172,7 +172,7 @@ private struct PlaylistTrackRow: View {
                                     }
                                 }
                             } label: {
-                                Label("下载歌曲", systemImage: "arrow.down.circle")
+                                Label("ui.downloads.download_song", systemImage: "arrow.down.circle")
                             }
                         }
                     }
@@ -217,7 +217,7 @@ private struct PlaylistTrackRow: View {
                         .frame(width: 42, height: 44)
                         .contentShape(.rect)
                 }
-                .accessibilityLabel("\(song.name)的更多操作")
+                .accessibilityLabel(L10n.format("ui.song.more_actions", song.name))
             }
         }
         .padding(.leading, 20)
@@ -259,7 +259,11 @@ private struct PlaylistTrackRow: View {
             .frame(width: 32, height: 32)
             .frame(width: 40)
         } else {
-            Text("\(index + 1)")
+            Text(
+                (index + 1).formatted(
+                    .number.locale(L10n.locale)
+                )
+            )
                 .font(.title3)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
@@ -270,19 +274,25 @@ private struct PlaylistTrackRow: View {
     }
 
     private var primaryActionAccessibilityLabel: String {
-        "\(song.name)，\(song.artistText)"
+        L10n.format(
+            "ui.accessibility.song_and_artist",
+            song.name,
+            song.artistText
+        )
     }
 
     private var primaryActionAccessibilityValue: String {
         guard isSelectingDownloads else {
-            return isCurrentSong ? "正在播放" : ""
+            return isCurrentSong ? L10n.string("ui.player.now_playing") : ""
         }
         if !canSelectForDownload {
             return downloads.contains(songID: song.id)
-                ? "已下载"
-                : "正在下载"
+                ? L10n.string("ui.downloads.downloaded")
+                : L10n.string("ui.downloads.downloading")
         }
-        return isSelectedForDownload ? "已选择" : "未选择"
+        return isSelectedForDownload
+            ? L10n.string("ui.common.selected")
+            : L10n.string("ui.common.not_selected")
     }
 
     private func primaryAction() {
