@@ -95,7 +95,7 @@ MeloX 将相关内容移植为原生 SwiftUI，并根据歌词播放进度实时
   <img src="docs/screenshots/8.png" alt="文字PV歌词" width="60%">
 </p>
 
-### EVA样式歌词（？）
+### EVA样式歌词
 
 <p align="center">
   <img src="docs/screenshots/10.png" alt="EVA样式歌词" width="30%">
